@@ -1,3 +1,27 @@
+//"MIT License
+
+//Copyright (c) 2021 Radhakrishnan Thangavel
+
+//Permission is hereby granted, free of charge, to any person obtaining a copy
+//of this software and associated documentation files (the "Software"), to deal
+//in the Software without restriction, including without limitation the rights
+//to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+//copies of the Software, and to permit persons to whom the Software is
+//furnished to do so, subject to the following conditions:
+
+//The above copyright notice and this permission notice shall be included in all
+//copies or substantial portions of the Software.
+
+//THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+//IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+//FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+//AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+//LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+//OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+//SOFTWARE.
+
+// Author: Radhakrishnan Thangavel (https://github.com/trkinvincible)
+
 #ifndef FLOG_CIRCULAR_BUFFER_HPP
 #define FLOG_CIRCULAR_BUFFER_HPP
 
@@ -5,15 +29,14 @@
 #include <cstdlib>
 #include <atomic>
 #include <vector>
-#include <thread>
 
 class ProducerMsg;
 
-template<typename T>
+template<typename T, std::size_t N = 20>
 class FLogCircularBuffer {
 
-    static constexpr bool SLOT_LOCKED   = false;
-    static constexpr bool SLOT_UNLOCKED = true;
+    static constexpr bool SLOT_LOCKED   = true;
+    static constexpr bool SLOT_UNLOCKED = false;
     static constexpr int CACHELINE_SIZE{64};
 
 public:
@@ -24,11 +47,27 @@ public:
         mCurrentWriteBuffer = reinterpret_cast<char*>(&mBuffer[mWritePos.load(std::memory_order_acquire)]);
     }
 
-    void WriteData(ProducerMsg&& p_data){
+    bool WriteData(ProducerMsg&& p_data){
+
+        auto pos = mWritePos.load(std::memory_order_acquire);
+
+        if (mBufferStatesPerSlot[pos].first.load() == SLOT_LOCKED &&
+            mBufferStatesPerSlot[pos].second != 0){
+            return false;
+        }
+
+        if (p_data.isEnd){
+
+            auto oldWritePos = pos;
+            auto newWritePos = getPositionAfter(oldWritePos);
+            // Buffer full . Reader is not fast enough so lets postpone.
+            if (newWritePos == mReadPos.load()){
+                return false;
+            }
+        }
 
         if (mBytesWrittenInCurrentWriteBuffer == 0){
 
-            auto pos = mWritePos.load(std::memory_order_acquire);
             mBufferStatesPerSlot[pos].first.store(SLOT_LOCKED, std::memory_order_release);
             mBufferStatesPerSlot[pos].second = 0;
         }
@@ -39,17 +78,13 @@ public:
 
                 using ArgT = std::decay_t<decltype(arg)>;
                 if constexpr (std::is_arithmetic_v<ArgT>){
-#ifdef DEBUG
-                    std::cout << "is_arithmetic_v: " << arg << std::endl;
-#endif
+
                     std::string n = std::to_string(arg);
                     auto length = n.length();
                     std::uninitialized_copy_n(n.data(), length , (mCurrentWriteBuffer + mBytesWrittenInCurrentWriteBuffer));
                     mBytesWrittenInCurrentWriteBuffer += length;
                 }else if constexpr (std::is_same_v<ArgT, const char*>){
-#ifdef DEBUG
-                    std::cout << "char*: " << arg << std::endl;
-#endif
+
                     auto length = arg ? strlen(arg) : 0;
                     std::uninitialized_copy_n(arg, length, (mCurrentWriteBuffer + mBytesWrittenInCurrentWriteBuffer));
                     mBytesWrittenInCurrentWriteBuffer += length;
@@ -59,45 +94,64 @@ public:
 
         if (p_data.isEnd){
 
-#ifdef DEBUG
-            std::cout << "End of Log" << std::endl;
-#endif
-            auto oldWritePos = mWritePos.load(std::memory_order_acquire);
+            auto oldWritePos = pos;
             auto newWritePos = getPositionAfter(oldWritePos);
-            auto len = std::distance(mCurrentWriteBuffer, mCurrentWriteBuffer + mBytesWrittenInCurrentWriteBuffer);
-            mWritePos.store(newWritePos, std::memory_order_release);
 
             // Reset all helpers
-            mBytesWrittenInCurrentWriteBuffer = 0;
-            mCurrentWriteBuffer = reinterpret_cast<char*>(&mBuffer[mWritePos.load(std::memory_order_acquire)]);
-
+            auto len = std::distance(mCurrentWriteBuffer, mCurrentWriteBuffer + mBytesWrittenInCurrentWriteBuffer);
             mBufferStatesPerSlot[oldWritePos].second = len;
             mBufferStatesPerSlot[oldWritePos].first.store(SLOT_UNLOCKED, std::memory_order_release);
 
-            if (newWritePos == mReadPos.load()){
-#ifdef DEBUG
-                std::cout << "Data loss" << std::endl;
-#endif
-            }
+            mWritePos.store(newWritePos, std::memory_order_release);
+            mBytesWrittenInCurrentWriteBuffer = 0;
+            mCurrentWriteBuffer = reinterpret_cast<char*>(&mBuffer[mWritePos.load(std::memory_order_acquire)]);
         }
+
+        return true;
     }
 
-    bool ReadData(char** p_Data, std::size_t& p_Length){
+    void UnlockReadPos(const std::size_t p_Pos){
 
-        if (mBufferStatesPerSlot[mReadPos.load()].first.load() == SLOT_LOCKED)
+        mBufferStatesPerSlot[p_Pos].second = 0;
+        mBufferStatesPerSlot[p_Pos].first.store(SLOT_UNLOCKED, std::memory_order_release);
+    }
+
+    bool ReadData(char** p_Data, std::size_t& p_Length, std::size_t& p_CurPos){
+
+        auto pos = mReadPos.load(std::memory_order_acquire);
+
+        if (mBufferStatesPerSlot[pos].first.load() == SLOT_LOCKED ||
+            mBufferStatesPerSlot[pos].second == 0){
             return false;
+        }
 
-        *p_Data = reinterpret_cast<char*>(std::addressof(mBuffer[mReadPos]));
-        p_Length = mBufferStatesPerSlot[mReadPos].second;
         while(true){
+
             auto oldWritePos = mWritePos.load();
-            auto oldReadPos = mReadPos.load();
+            auto oldReadPos = pos;
             if (oldWritePos == oldReadPos){
                 return false;
             }
+
+            mBufferStatesPerSlot[oldReadPos].first.store(SLOT_LOCKED, std::memory_order_release);
+            p_CurPos = oldReadPos;
+            *p_Data = reinterpret_cast<char*>(std::addressof(mBuffer[oldReadPos]));
+            p_Length = mBufferStatesPerSlot[pos].second;
+
             if (mReadPos.compare_exchange_strong(oldReadPos, getPositionAfter(oldReadPos)))
                 return true;
         }
+    }
+
+    bool FlushBuffer(char** p_Data, std::size_t& p_Length){
+
+        static int currIndex = -1;
+        if (++currIndex == mBufferSize - 1)
+            return true;
+
+        *p_Data = reinterpret_cast<char*>(std::addressof(mBuffer[currIndex]));
+        p_Length = mBufferStatesPerSlot[currIndex].second;
+        return false;
     }
 
 private:
@@ -110,7 +164,7 @@ private:
     T* mBuffer;
     const std::size_t mBufferSize;
     std::atomic<std::size_t> mWritePos{0}, mReadPos{0};
-    std::array<std::pair<std::atomic_bool, std::size_t>, 20> mBufferStatesPerSlot;
+    std::array<std::pair<std::atomic_bool, std::size_t>, N> mBufferStatesPerSlot;
 
     // Helper states
     char* mCurrentWriteBuffer;

@@ -38,7 +38,7 @@ find_package(Boost COMPONENTS program_options REQUIRED)
 ######################
 #Include Definitions #
 ######################
-#add_definitions(-DDEBUG)
+#add_definitions(-DDEBUG=1)
 
 ######################
 #Include Directories #

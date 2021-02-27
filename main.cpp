@@ -1,3 +1,27 @@
+//"MIT License
+
+//Copyright (c) 2021 Radhakrishnan Thangavel
+
+//Permission is hereby granted, free of charge, to any person obtaining a copy
+//of this software and associated documentation files (the "Software"), to deal
+//in the Software without restriction, including without limitation the rights
+//to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+//copies of the Software, and to permit persons to whom the Software is
+//furnished to do so, subject to the following conditions:
+
+//The above copyright notice and this permission notice shall be included in all
+//copies or substantial portions of the Software.
+
+//THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+//IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+//FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+//AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+//LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+//OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+//SOFTWARE.
+
+// Author: Radhakrishnan Thangavel (https://github.com/trkinvincible)
+
 #include <iostream>
 
 #include <iostream>
@@ -8,7 +32,7 @@
 #include "gtest.h"
 #include "FLogManager.h"
 
-LEVEL FLogManager::mCurrentLevel = LEVEL::WARN;
+LEVEL FLogManager::mCurrentLevel = LEVEL::CRIT;
 GRANULARITY FLogManager::mCurrentGranularity = GRANULARITY::FULL;
 
 int main(int argc, char *argv[])
@@ -35,13 +59,13 @@ int main(int argc, char *argv[])
     if (!config.data().run_test){
 
         FLogManager::globalInstance(&config).SetCopyrightAndStartService(s_copyright);
-        FLOG_INFO << "Hello World Test INFO";
-        FLOG_WARN << "Hello World Test WARN";
+        FLOG_INFO << __FUNCTION__ << "  INFO";
+        FLOG_WARN << __FUNCTION__ << "  WARN";
+        FLOG_CRIT << __FUNCTION__ << "  CRIT";
     }else{
 
         RunGTest(argc, argv, config);
     }
-    std::this_thread::sleep_for(std::chrono::seconds(3));
 
     return 0;
 }
