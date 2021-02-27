@@ -70,16 +70,18 @@ enum class GRANULARITY : uint8_t{
   FULL
 };
 
-using var_t = std::variant<const char*, unsigned int, int, double>;
+using supported_loggable_type = std::variant<const char*, unsigned int, int, double>;
 struct ProducerMsg{
 
-    ProducerMsg(bool p_IsEnd, std::array<var_t, 8>&& p_Data):isEnd(p_IsEnd)
-    {
-        data.swap(p_Data);
-    }
+    ProducerMsg(bool p_IsEnd, std::array<supported_loggable_type, 8>&& p_Data):isEnd(p_IsEnd){ data.swap(p_Data); }
     bool isEnd = false;
-    std::array<var_t, 8> data;
+    std::array<supported_loggable_type, 8> data;
 };
+
+inline uint64_t FLogNow(){
+
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+}
 
 // helper constant for the visitor #3
 template<class> inline constexpr bool always_false_v = false;

@@ -37,14 +37,19 @@ class FLogCircularBuffer {
 
     static constexpr bool SLOT_LOCKED   = true;
     static constexpr bool SLOT_UNLOCKED = false;
-    static constexpr int CACHELINE_SIZE{64};
+    static constexpr int  CACHELINE_SIZE{64};
 
 public:
     FLogCircularBuffer(const std::size_t p_BufferSize)
         :mBufferSize(p_BufferSize + 1),
           mBuffer(static_cast<T*>(std::aligned_alloc(CACHELINE_SIZE, sizeof(T) * mBufferSize + 1))){
 
-        mCurrentWriteBuffer = reinterpret_cast<char*>(&mBuffer[mWritePos.load(std::memory_order_acquire)]);
+        mCurrentWriteBuffer = reinterpret_cast<char*>(&mBuffer[mWritePos]);
+    }
+
+    ~FLogCircularBuffer()noexcept{
+
+        std::free(mBuffer);
     }
 
     bool WriteData(ProducerMsg&& p_data){
@@ -61,7 +66,7 @@ public:
             auto oldWritePos = pos;
             auto newWritePos = getPositionAfter(oldWritePos);
             // Buffer full . Reader is not fast enough so lets postpone.
-            if (newWritePos == mReadPos.load()){
+            if (newWritePos == mReadPos.load(std::memory_order_acquire)){
                 return false;
             }
         }
@@ -72,7 +77,7 @@ public:
             mBufferStatesPerSlot[pos].second = 0;
         }
 
-        for(auto& v: p_data.data) {
+        for(const auto& v: p_data.data) {
 
             std::visit([this](auto&& arg) {
 
@@ -80,13 +85,13 @@ public:
                 if constexpr (std::is_arithmetic_v<ArgT>){
 
                     std::string n = std::to_string(arg);
-                    auto length = n.length();
-                    std::uninitialized_copy_n(n.data(), length , (mCurrentWriteBuffer + mBytesWrittenInCurrentWriteBuffer));
+                    const auto length = n.length();
+                    std::uninitialized_move_n(n.data(), length , (mCurrentWriteBuffer + mBytesWrittenInCurrentWriteBuffer));
                     mBytesWrittenInCurrentWriteBuffer += length;
                 }else if constexpr (std::is_same_v<ArgT, const char*>){
 
                     auto length = arg ? strlen(arg) : 0;
-                    std::uninitialized_copy_n(arg, length, (mCurrentWriteBuffer + mBytesWrittenInCurrentWriteBuffer));
+                    std::uninitialized_move_n(arg, length, (mCurrentWriteBuffer + mBytesWrittenInCurrentWriteBuffer));
                     mBytesWrittenInCurrentWriteBuffer += length;
                 }
             }, v);
@@ -104,13 +109,13 @@ public:
 
             mWritePos.store(newWritePos, std::memory_order_release);
             mBytesWrittenInCurrentWriteBuffer = 0;
-            mCurrentWriteBuffer = reinterpret_cast<char*>(&mBuffer[mWritePos.load(std::memory_order_acquire)]);
+            mCurrentWriteBuffer = reinterpret_cast<char*>(&mBuffer[mWritePos]);
         }
 
         return true;
     }
 
-    void UnlockReadPos(const std::size_t p_Pos){
+    void UnlockReadPos(const std::size_t p_Pos)noexcept{
 
         mBufferStatesPerSlot[p_Pos].second = 0;
         mBufferStatesPerSlot[p_Pos].first.store(SLOT_UNLOCKED, std::memory_order_release);
@@ -127,15 +132,15 @@ public:
 
         while(true){
 
-            auto oldWritePos = mWritePos.load();
+            auto oldWritePos = mWritePos.load(std::memory_order_acquire);
             auto oldReadPos = pos;
             if (oldWritePos == oldReadPos){
                 return false;
             }
 
-            mBufferStatesPerSlot[oldReadPos].first.store(SLOT_LOCKED, std::memory_order_release);
-            p_CurPos = oldReadPos;
-            *p_Data = reinterpret_cast<char*>(std::addressof(mBuffer[oldReadPos]));
+            mBufferStatesPerSlot[pos].first.store(SLOT_LOCKED, std::memory_order_release);
+            p_CurPos = pos;
+            *p_Data = reinterpret_cast<char*>(std::addressof(mBuffer[pos]));
             p_Length = mBufferStatesPerSlot[pos].second;
 
             if (mReadPos.compare_exchange_strong(oldReadPos, getPositionAfter(oldReadPos)))
@@ -146,12 +151,13 @@ public:
     bool FlushBuffer(char** p_Data, std::size_t& p_Length){
 
         static int currIndex = -1;
+        static const bool END_OF_BUFFER = true;
         if (++currIndex == mBufferSize - 1)
-            return true;
+            return END_OF_BUFFER;
 
         *p_Data = reinterpret_cast<char*>(std::addressof(mBuffer[currIndex]));
         p_Length = mBufferStatesPerSlot[currIndex].second;
-        return false;
+        return !END_OF_BUFFER;
     }
 
 private:
@@ -168,7 +174,7 @@ private:
 
     // Helper states
     char* mCurrentWriteBuffer;
-    size_t mBytesWrittenInCurrentWriteBuffer{0};
+    std::size_t mBytesWrittenInCurrentWriteBuffer{0};
 };
 
 #endif /* FLOG_CIRCULAR_BUFFER_HPP */

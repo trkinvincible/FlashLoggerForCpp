@@ -61,7 +61,7 @@ public:
 
     ~FLogLine(){ if (!mIgnore) AddProdMsgExternal(ProducerMsg(true, {" \n"})); }
 
-    virtual const FLogLine& operator<<(const var_t&& p_Arg) const{
+    virtual const FLogLine& operator<<(const supported_loggable_type&& p_Arg) const{
 
         std::visit([](auto&& arg) {
 
@@ -82,24 +82,32 @@ public:
     }
 
 private:
-    mutable bool mIgnore{true};
-
     const char* Gettime(uint64_t p_Now){
 
         static char mbstr[100];
-        auto duration = std::chrono::seconds(p_Now);
+        auto duration = std::chrono::milliseconds(p_Now);
         std::chrono::system_clock::time_point time_point(duration);
         std::time_t time_t = std::chrono::system_clock::to_time_t(time_point);
-        if (std::strftime(mbstr, sizeof(mbstr), "%c", std::localtime(&time_t)))
+        int len = 0;
+        if (len = std::strftime(mbstr, sizeof(mbstr), "%c", std::localtime(&time_t))){
+
+            static char microseconds[7];
+            sprintf(microseconds, "ms%06l", duration.count());
+            strcat(mbstr, microseconds);
             return mbstr;
+        }
         return "Empty";
     }
 
-    // date & time %a and %T
-    // pretty function
-    // line number
-    // userdata
+    mutable bool mIgnore{true};
 };
 
+struct FLogLineDummy final : public FLogLine{
+
+    const FLogLineDummy& operator<<(const supported_loggable_type&& p_Arg) const override{
+
+        std::cout << "ignored: " << std::endl;
+    }
+};
 #endif /* FLOG_LINE_HPP */
 

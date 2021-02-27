@@ -30,7 +30,7 @@ TEST(FlashLoggerTest, LOG_INFO) {
     FLogManager::globalInstance().SetLogLevel("INFO");
 
     for(unsigned int i = 0; i < 10; i++)
-        FLOG_INFO << "char* : " << "Hello World Tests"
+        FLOG_INFO << "char* : " << "Hello World!!!"
                   << "unsigned int : " << i
                   << "signed int : " << static_cast<int>(i - 10)
                   << "double : " << static_cast<double>(i);
@@ -53,8 +53,9 @@ TEST(CacheManagerTest, LOG_CRITICAL) {
 
 int RunGTest(int argc, char **argv, FLogConfig& p_Config) {
 
-    FLogManager::globalInstance(&p_Config);
-    FLogManager::SetLogGranularity("BASIC");
+    FLogManager& flog_service = FLogManager::globalInstance(&p_Config);
+    flog_service.SetCopyrightAndStartService(s_copyright);
+    FLogManager::SetLogGranularity("FULL");
     testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }

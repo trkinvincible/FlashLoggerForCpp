@@ -42,6 +42,8 @@
 
 class FLogManager{
 
+    static constexpr std::size_t MAX_SLOT_LEN = sizeof(FLogLine::type);
+
 public:
     FLogManager(const FLogManager &rhs) = delete;
     FLogManager& operator=(const FLogManager &rhs) = delete;
@@ -51,18 +53,34 @@ public:
         return s_Self;
     }
 
-    ~FLogManager(){
+    ~FLogManager() noexcept{
 
-        mHostAppExited.store(true, std::memory_order_relaxed);
-        mTasksFutures[0].get();
-        mConsExit.store(true, std::memory_order_relaxed);
-        mTasksFutures[1].get();
+        try{
+
+            mHostAppExited.store(true, std::memory_order_relaxed);
+            mTasksFutures[0].get();
+            mConsExit.store(true, std::memory_order_relaxed);
+            mTasksFutures[1].get();
+        }catch(std::exception& exp){
+
+            std::cout << __FUNCTION__ << " FLOG service failed to exit: "
+                      << exp.what() << std::endl;
+        }
     }
 
     FLogManager(const FLogConfig* p_Config) noexcept
         :mConfig(p_Config),
          mFileUtility(std::string(p_Config->data().log_file_path +"/"+ p_Config->data().log_file_name)),
-         mAsyncBuffer(new FLogCircularBuffer<FLogLine::type>(p_Config->data().size_of_ring_buffer)){
+         mAsyncBuffer(new FLogCircularBuffer<FLogLine::type>(p_Config->data().size_of_ring_buffer)){}
+
+    void SetCopyrightAndStartService(const std::string& p_Data){
+
+        mFileUtility.WriteToFile(p_Data.c_str(), p_Data.length());
+        // Configure the essential ENV variables
+        std::string val = []()->const char* { if (char* buf=::getenv("FLOG_LOG_LEVEL")) return buf; return " "; }();
+        FLogManager::SetLogLevel(val);
+        val = []()->const char* { if (char* buf=::getenv("FLOG_GRANULARITY")) return buf; return " "; }();
+        FLogManager::SetLogGranularity(val);
 
         mTasksFutures.reserve(2);
         std::packaged_task<void(void)> taskProd(std::bind(&FLogManager::ProducerThreadRun, this));
@@ -91,35 +109,25 @@ public:
         t2.detach();
     }
 
-    void SetCopyrightAndStartService(const std::string& p_Data){
-
-        mFileUtility.WriteToFile(p_Data.c_str(), p_Data.length());
-        // Configure the essential ENV variables
-        std::string val = []()->const char* { if (char* buf=::getenv("FLOG_LOG_LEVEL")) return buf; return " "; }();
-        FLogManager::SetLogLevel(val);
-        val = []()->const char* { if (char* buf=::getenv("FLOG_GRANULARITY")) return buf; return " "; }();
-        FLogManager::SetLogGranularity(val);
-    }
-
-    static void SetLogLevel(std::string p_level){
+    static void SetLogLevel(std::string p_level)noexcept{
 
         if (p_level.empty()) return;
         mCurrentLevel = (p_level == "INFO" ? LEVEL::INFO :
                          p_level == "WARN" ? LEVEL::WARN : LEVEL::CRIT);
     }
 
-    static void SetLogGranularity(std::string p_granularity){
+    static void SetLogGranularity(std::string p_granularity)noexcept{
 
         if (p_granularity.empty()) return;
         mCurrentGranularity = (p_granularity == "BASIC" ? GRANULARITY::BASIC : GRANULARITY::FULL);
     }
 
-    static bool toLog(LEVEL p_level) {
+    static bool toLog(LEVEL p_level)noexcept{
 
         return (mCurrentLevel >= p_level);
     }
 
-    static bool IsFull() {
+    static bool IsFull()noexcept{
 
         return (mCurrentGranularity == GRANULARITY::FULL);
     }
@@ -151,7 +159,7 @@ public:
             if (mProdMessageBox.empty()){
 
                 lk1.lock();
-                if (!mProdCondVariable.wait_for(lk1, 5s, [this]() {
+                if (!mProdCondVariable.wait_for(lk1, 2s, [this]() {
                     return !mProdMessageBox.empty() && mHostAppExited.load();
                 })){
                     return;
@@ -164,15 +172,11 @@ public:
                 while (!mAsyncBuffer->WriteData(std::move(msg))){
 
                     std::this_thread::sleep_for(70ms);
-                    ProducerMsg tmp = mProdMessageBox.front();
-                    msg = tmp;
+                    msg = mProdMessageBox.front();
                 }
                 mProdMessageBox.pop();
 
-                std::call_once(startConsumer, [this](){
-
-                    mStartReader.store(true);
-                });
+                std::call_once(startConsumer, [this](){ mStartReader.store(true); });
             }
             lk1.unlock();
         }
@@ -183,17 +187,17 @@ public:
         while(true){
 
             // Let some data get logged first
-            if (mStartReader.load() == false)
-                std::this_thread::sleep_for(10s);
+            if (mStartReader.load(std::memory_order_relaxed) == false)
+                std::this_thread::sleep_for(2s);
 
-            if (mConsExit.load()){
+            if (mConsExit.load(std::memory_order_relaxed)){
 
                 char* start = nullptr; std::size_t end;
                 while (!mAsyncBuffer->FlushBuffer(&start, end)){
 
                     if (end != 0){
 
-                        mFileUtility.WriteToFile(start, std::min(sizeof(FLogLine::type), end));
+                        mFileUtility.WriteToFile(start, std::min(MAX_SLOT_LEN, end));
                     }
                 }
 
@@ -203,8 +207,8 @@ public:
             char* start = nullptr; std::size_t end, pos;
             if (mAsyncBuffer->ReadData(&start, end, pos)){
 
-                mFileUtility.WriteToFile(start, std::min(sizeof(FLogLine::type), end));
-                mAsyncBuffer->UnlockReadPos(pos);
+                if (mFileUtility.WriteToFile(start, std::min(MAX_SLOT_LEN, end)))
+                    mAsyncBuffer->UnlockReadPos(pos);
             }else{
 
                 std::this_thread::sleep_for(100ms);
@@ -214,6 +218,7 @@ public:
 
 private:
     const FLogConfig* mConfig;
+
     std::unique_ptr<FLogCircularBuffer<FLogLine::type>> mAsyncBuffer;
 
     std::thread mProducerThread;
@@ -222,35 +227,21 @@ private:
     std::condition_variable_any mProdCondVariable;
 
     std::thread mConsumerThread;
+
     std::vector<std::future<void>> mTasksFutures;
 
-    // Load level from ENV variable will be make more productive
     static LEVEL mCurrentLevel;
     static GRANULARITY mCurrentGranularity;
     FileUtility mFileUtility;
-    std::atomic<bool> mHostAppExited{false};
-    std::atomic<bool> mConsExit{false};
-    std::atomic<bool> mStartReader{false};
-
+    std::atomic_bool mHostAppExited{false};
+    std::atomic_bool mConsExit{false};
+    std::atomic_bool mStartReader{false};
 };
 
 void AddProdMsgExternal(ProducerMsg&& p_Msg){
 
     FLogManager::globalInstance().AddProdMsg(std::move(p_Msg));
 }
-
-inline uint64_t FLogNow(){
-
-    return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-}
-
-struct FLogLineDummy : public FLogLine{
-
-    const FLogLineDummy& operator<<(const var_t&& p_Arg) const override{
-
-        std::cout << "ignored: " << std::endl;
-    }
-};
 
 #endif /* FLOG_MANAGER_HPP */
 

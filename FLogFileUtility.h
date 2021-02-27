@@ -41,11 +41,15 @@ class FileUtility
 public:
     FileUtility(const std::string& p_FileName){
 
+#if 0   // Release
+        mFile = open(p_FileName.c_str(), S_IRUSR|S_IWUSR, O_WRONLY | O_CREAT | O_TRUNC);
+#else
         mFile = open(p_FileName.c_str(), O_WRONLY | O_CREAT | O_TRUNC);
+#endif
         mLogFile.reset(new FileOutputStream(mFile));
     }
 
-    ~FileUtility(){
+    ~FileUtility() noexcept{
 
         mLogFile.reset();
         close(mFile);
