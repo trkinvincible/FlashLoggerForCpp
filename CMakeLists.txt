@@ -12,8 +12,10 @@ endif()
 set(CMAKE_CXX_STANDARD 17)
 #set(CMAKE_CXX_FLAGS "-pg") - use only with GCC 's own profiler
 
-find_package(GTest REQUIRED)
-include_directories(${GTEST_INCLUDE_DIRS})
+if (CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+  set (CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/install" CACHE PATH "default install path" FORCE)
+endif()
+
 find_package(Protobuf REQUIRED)
 include_directories(${PROTOBUF_INCLUDE_DIR})
 
@@ -43,17 +45,64 @@ find_package(Boost COMPONENTS program_options REQUIRED)
 ######################
 #Include Directories #
 ######################
-include_directories(${Boost_INCLUDE_DIRS})
+include_directories(
+    ${Boost_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_BINARY_DIR}
+ )
 
 ######################
 #link Directories    #
 ######################
-link_directories()
+link_directories(
+    ${CMAKE_INSTALL_PREFIX}/lib
+)
 
 ######################
 # Create executable  #
 ######################
-add_executable(${PROJECT_NAME} ${_SOURCES_} ${_HEADER_})
+#add_executable(${PROJECT_NAME} ${_SOURCES_} ${_HEADER_})
+include(${CMAKE_ROOT}/Modules/ExternalProject.cmake)
+
+ExternalProject_Add(
+  googletest
+  SOURCE_DIR ${PROJECT_SOURCE_DIR}/ext/googletest
+  CMAKE_ARGS -DBUILD_GMOCK=ON -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/googletest -DCMAKE_INSTALL_LIBDIR=${CMAKE_BINARY_DIR}/googletest/lib
+  )
+include(CTest)
+enable_testing()
+
+add_library(${PROJECT_NAME} SHARED ${_SOURCES_})
+set_property(TARGET ${PROJECT_NAME} PROPERTY POSITION_INDEPENDENT_CODE ON)
+
+install(FILES ${_HEADER_}
+  DESTINATION include/${PROJECT_NAME}
+  )
+
+install(TARGETS ${PROJECT_NAME}
+  EXPORT ${PROJECT_NAME}
+  RUNTIME DESTINATION lib
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib)
+
+install(
+  EXPORT ${PROJECT_NAME}
+  DESTINATION lib/cmake/${PROJECT_NAME} COMPONENT dev
+  PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
+  )
+
+set(${PROJECT_NAME}_INCLUDE_DIR ${CMAKE_INSTALL_PREFIX}/include)
+set(${PROJECT_NAME}_LIBRARIES ${PROJECT_NAME})
+configure_file(
+  ${PROJECT_SOURCE_DIR}/${PROJECT_NAME}.cmake.in
+  ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config-install.cmake
+  @ONLY
+  )
+install(
+  FILES ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config-install.cmake
+  DESTINATION lib/cmake/${PROJECT_NAME} COMPONENT dev
+  RENAME ${PROJECT_NAME}Config.cmake
+  PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
+  )
 
 target_link_libraries(${PROJECT_NAME}
     -lpthread
@@ -63,7 +112,6 @@ target_link_libraries(${PROJECT_NAME}
     -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
     ${Boost_LIBRARIES}
     ${PROTOBUF_LIBRARY}
-    ${GTEST_LIBRARIES}
 )
 
 

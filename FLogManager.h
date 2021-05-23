@@ -176,7 +176,7 @@ public:
                 }
                 mProdMessageBox.pop();
 
-                std::call_once(startConsumer, [this](){ mStartReader.store(true); });
+                std::call_once(startConsumer, [this](){ mStartReader.store(true, std::memory_order_relaxed); });
             }
             lk1.unlock();
         }
