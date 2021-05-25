@@ -85,7 +85,7 @@ if(TESTS)
     )
 else()
     message("Rk: building .SO")
-    add_library(${PROJECT_NAME} SHARED ${_SOURCES_})
+    add_library(${PROJECT_NAME} SHARED ${_HEADER_})
     install(FILES ${_HEADER_}
       DESTINATION include/${PROJECT_NAME}
     )
