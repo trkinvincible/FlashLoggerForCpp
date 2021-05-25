@@ -85,10 +85,11 @@ if(TESTS)
     )
 else()
     message("Rk: building .SO")
-    add_library(${PROJECT_NAME} SHARED ${_HEADER_})
+    add_library(${PROJECT_NAME} INTERFACE)
     install(FILES ${_HEADER_}
       DESTINATION include/${PROJECT_NAME}
     )
+#    target_include_directories(${PROJECT_NAME} INTERFACE iinclude/${PROJECT_NAME)
     install(TARGETS ${PROJECT_NAME}
         EXPORT ${PROJECT_NAME}
         RUNTIME DESTINATION lib
@@ -113,7 +114,7 @@ else()
       RENAME ${PROJECT_NAME}Config.cmake
       PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
     )
-    target_link_libraries(${PROJECT_NAME}
+    target_link_libraries(${PROJECT_NAME} INTERFACE
         -lpthread
         -latomic
         ${Boost_LIBRARIES}
