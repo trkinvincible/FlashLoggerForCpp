@@ -86,7 +86,7 @@ if(TESTS)
 else()
     message("Rk: building .SO")
     add_library(${PROJECT_NAME} INTERFACE)
-    install(FILES ${_HEADER_}
+    install(FILES ${_HEADER_} ${CMAKE_CURRENT_SOURCE_DIR}/config.cfg
       DESTINATION include/${PROJECT_NAME}
     )
 #    target_include_directories(${PROJECT_NAME} INTERFACE iinclude/${PROJECT_NAME)
