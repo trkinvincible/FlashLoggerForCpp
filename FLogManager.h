@@ -38,7 +38,12 @@
 #include "FLogUtilStructs.h"
 #include "FLogLine.h"
 #include "FLogCircularBuffer.h"
-#include "FLogFileUtility.h"
+#include "FLogWritter.h"
+#if(USE_MICROSERVICE)
+#include "FLogMicroServiceWritter.h"
+#else
+#include "FLogFileWritter.h"
+#endif
 
 class FLogManager{
 
@@ -70,12 +75,12 @@ public:
 
     FLogManager(const FLogConfig* p_Config) noexcept
         :mConfig(p_Config),
-         mFileUtility(std::string(p_Config->data().log_file_path +"/"+ p_Config->data().log_file_name)),
+         mWritterUtility(std::string(p_Config->data().log_file_path +"/"+ p_Config->data().log_file_name)),
          mAsyncBuffer(new FLogCircularBuffer<FLogLine::type>(p_Config->data().size_of_ring_buffer)){}
 
     void SetCopyrightAndStartService(const std::string& p_Data){
 
-        mFileUtility.WriteToFile(p_Data.c_str(), p_Data.length());
+        mWritterUtility.WriteToFile(p_Data.c_str(), p_Data.length());
         // Configure the essential ENV variables
         std::string val = []()->const char* { if (char* buf=::getenv("FLOG_LOG_LEVEL")) return buf; return " "; }();
         FLogManager::SetLogLevel(val);
@@ -158,12 +163,16 @@ public:
             std::unique_lock<std::recursive_mutex> lk1(mProdMutex, std::defer_lock);
             if (mProdMessageBox.empty()){
 
+                // Inteligent lock only if empty.wait() will unlock the mutex for "AddProdMsg" until queue not empty
                 lk1.lock();
                 if (!mProdCondVariable.wait_for(lk1, 2s, [this]() {
                     return !mProdMessageBox.empty() && mHostAppExited.load();
                 })){
                     return;
                 }
+            }else{
+
+                lk1.lock();
             }
 
             while (!mProdMessageBox.empty()){
@@ -188,7 +197,7 @@ public:
 
             // Let some data get logged first
             if (mStartReader.load(std::memory_order_relaxed) == false)
-                std::this_thread::sleep_for(2s);
+                std::this_thread::sleep_for(2ms);
 
             if (mConsExit.load(std::memory_order_relaxed)){
 
@@ -197,7 +206,7 @@ public:
 
                     if (end != 0){
 
-                        mFileUtility.WriteToFile(start, std::min(MAX_SLOT_LEN, end));
+                        mWritterUtility.WriteToFile(start, std::min(MAX_SLOT_LEN, end));
                     }
                 }
 
@@ -207,11 +216,11 @@ public:
             char* start = nullptr; std::size_t end, pos;
             if (mAsyncBuffer->ReadData(&start, end, pos)){
 
-                if (mFileUtility.WriteToFile(start, std::min(MAX_SLOT_LEN, end)))
+                if (mWritterUtility.WriteToFile(start, std::min(MAX_SLOT_LEN, end)))
                     mAsyncBuffer->UnlockReadPos(pos);
             }else{
 
-                std::this_thread::sleep_for(100ms);
+                std::this_thread::sleep_for(10ms);
             }
         }
     }
@@ -232,7 +241,11 @@ private:
 
     static LEVEL mCurrentLevel;
     static GRANULARITY mCurrentGranularity;
-    FileUtility mFileUtility;
+#if(USE_MICROSERVICE)
+    FLogWritter<FLogMicroServiceWritter> mWritterUtility;
+#else
+    FLogWritter<FLogFileWritter> mWritterUtility;
+#endif
     std::atomic_bool mHostAppExited{false};
     std::atomic_bool mConsExit{false};
     std::atomic_bool mStartReader{false};

@@ -22,42 +22,21 @@
 
 // Author: Radhakrishnan Thangavel (https://github.com/trkinvincible)
 
-#include "FLogManager.h"
-#include <gtest/gtest.h>
+#pragma once
 
-TEST(FlashLoggerTest, LOG_INFO) {
+#if(USE_MICROSERVICE)
+#include "FLogMicroServiceWritter.h"
+#else
+#include "FLogFileWritter.h"
+#endif
 
-    FLogManager::globalInstance().SetLogLevel("INFO");
+template<typename T>
+class FLogWritter : public T
+{
+public:
+    FLogWritter(const std::string& p_FileName):T(p_FileName){ }
 
-    for(unsigned int i = 0; i < 10; i++){
-
-        FLOG_INFO << "char* : " << "Hello World!!!"
-                  << "unsigned int : " << i
-                  << "signed int : " << static_cast<int>(i - 10)
-                  << "double : " << static_cast<double>(i);
+    bool WriteToFile(const char* data, int size) {
+        return T::WriteToFile(data, size);
     }
-}
-TEST(CacheManagerTest, LOG_WARNING) {
-
-    FLogManager::globalInstance().SetLogLevel("WARN");
-
-    FLOG_WARN << "Hello World Test WARN";
-    FLOG_CRIT << "Hello World Test CRIT";
-}
-TEST(CacheManagerTest, LOG_CRITICAL) {
-
-    FLogManager::globalInstance().SetLogLevel("CRIT");
-
-    FLOG_INFO << "Hello World Test INFO";
-    FLOG_WARN << "Hello World Test WARN";
-    FLOG_CRIT << "Hello World Test CRIT";
-}
-
-int RunGTest(int argc, char **argv, FLogConfig& p_Config) {
-
-    FLogManager& flog_service = FLogManager::globalInstance(&p_Config);
-    flog_service.SetCopyrightAndStartService(s_copyright);
-    FLogManager::SetLogGranularity("FULL");
-    testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}
+};

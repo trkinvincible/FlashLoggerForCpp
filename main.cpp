@@ -41,7 +41,7 @@ int main(int argc, char *argv[])
     FLogConfig config([](flashlogger_config_data &d, boost::program_options::options_description &desc){
         desc.add_options()
                 ("cache.size_of_ring_buffer", boost::program_options::value<short>(&d.size_of_ring_buffer)->default_value(5), "size of buffer to log asyncoronously")
-                ("cache.log_file_path", boost::program_options::value<std::string>(&d.log_file_path)->default_value("../FlashLoggerForCpp"), "log file path")
+                ("cache.log_file_path", boost::program_options::value<std::string>(&d.log_file_path)->default_value("../"), "log file path")
                 ("cache.log_file_name", boost::program_options::value<std::string>(&d.log_file_name)->default_value("flashlog.txt"), "log file name")
                 ("cache.run_test", boost::program_options::value<short>(&d.run_test)->default_value(1), "choose to run test");
     });

@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package FLogProto;
+
+// The service definition.
+service FLogRemoteLogger {
+  rpc SendLogLine (LogLine) returns (Response) {}
+}
+
+message LogLine {
+  string log = 1;
+}
+
+message Response {
+  string message = 1;
+}

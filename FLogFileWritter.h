@@ -22,8 +22,7 @@
 
 // Author: Radhakrishnan Thangavel (https://github.com/trkinvincible)
 
-#ifndef FILE_UTILITY_H
-#define FILE_UTILITY_H
+#pragma once
 
 #include <fcntl.h>
 #include <stdlib.h>
@@ -36,10 +35,10 @@
 
 using namespace google::protobuf::io;
 
-class FileUtility
+class FLogFileWritter
 {
 public:
-    FileUtility(const std::string& p_FileName){
+    FLogFileWritter(const std::string& p_FileName){
 
 #if 0   // Release
         mFile = open(p_FileName.c_str(), S_IRUSR|S_IWUSR, O_WRONLY | O_CREAT | O_TRUNC);
@@ -49,7 +48,7 @@ public:
         mLogFile.reset(new FileOutputStream(mFile));
     }
 
-    ~FileUtility() noexcept{
+    ~FLogFileWritter() noexcept{
 
         mLogFile.reset();
         close(mFile);
@@ -83,4 +82,3 @@ private:
     int mFile;
     std::unique_ptr<ZeroCopyOutputStream> mLogFile;
 };
-#endif // FILE_UTILITY_H

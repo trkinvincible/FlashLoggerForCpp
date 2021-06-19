@@ -68,7 +68,7 @@ public:
     friend std::ostream& operator<<(std::ostream&, const config<DATA_TYPE>&);
 private:
     const add_options_type add_options;
-    static constexpr const char* config_name_default{"../FlashLoggerForCpp/config.cfg"};
+    static constexpr const char* config_name_default{"../config.cfg"};
     std::string config_name;
     po::variables_map vm;
     po::options_description desc;
