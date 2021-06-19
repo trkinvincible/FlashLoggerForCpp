@@ -109,6 +109,8 @@ struct flashlogger_config_data {
     std::string log_file_path;
     std::string log_file_name;
     short run_test;
+    std::string server_ip;
+    std::string server_port;
 
     flashlogger_config_data() = default;
 };

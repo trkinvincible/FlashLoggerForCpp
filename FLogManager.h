@@ -75,7 +75,11 @@ public:
 
     FLogManager(const FLogConfig* p_Config) noexcept
         :mConfig(p_Config),
-         mWritterUtility(std::string(p_Config->data().log_file_path +"/"+ p_Config->data().log_file_name)),
+      #if(USE_MICROSERVICE)
+          mWritterUtility(std::string(p_Config->data().server_ip +":"+ p_Config->data().server_port)),
+      #else
+          mWritterUtility(std::string(p_Config->data().log_file_path +"/"+ p_Config->data().log_file_name)),
+      #endif
          mAsyncBuffer(new FLogCircularBuffer<FLogLine::type>(p_Config->data().size_of_ring_buffer)){}
 
     void SetCopyrightAndStartService(const std::string& p_Data){

@@ -46,10 +46,10 @@ using FLogProto::LogLine;
 class FLogMicroServiceWritter
 {
 public:
-    explicit FLogMicroServiceWritter(const std::string& p_FileName){
+    explicit FLogMicroServiceWritter(const std::string& p_ServerColonPort){
 
         stub_ = FLogRemoteLogger::NewStub(grpc::CreateChannel(
-                                         "localhost:50051", grpc::InsecureChannelCredentials()));
+                                         p_ServerColonPort, grpc::InsecureChannelCredentials()));
         std::thread(&FLogMicroServiceWritter::AsyncCompleteRpc, this).detach();
     }
 
