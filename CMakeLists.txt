@@ -52,7 +52,6 @@ FetchContent_Declare(
 )
 set(protobuf_BUILD_TESTS OFF)
 FetchContent_MakeAvailable(protobuf)
-#find_package(Protobuf REQUIRED)
 
 # googletest
 if(TESTS)
@@ -71,7 +70,6 @@ include_directories(
 )
 
 # source files
-# include Directories
 if(MICROSERVICE)
     # Proto file
     get_filename_component(fl_proto "./flog.proto" ABSOLUTE)
@@ -152,15 +150,13 @@ endif(TESTS)
 link_directories(
     ${CMAKE_INSTALL_PREFIX}/lib
     ${Boost_LIBRARY_DIRS}
-    ${CMAKE_INSTALL_PREFIX}/lib
 )
 
-message("PROTOBUF_LIBRARY : ${PROTOBUF_LIBRARY}")
 # Create executable
 if(MICROSERVICE)
     set(LINK_LIBRARIES ${Boost_LIBRARIES} grpc++)
 else()
-    set(LINK_LIBRARIES ${PROTOBUF_LIBRARY} ${Boost_LIBRARIES})
+    set(LINK_LIBRARIES protobuf ${Boost_LIBRARIES})
 endif(MICROSERVICE)
 
 if(TESTS)
@@ -192,7 +188,7 @@ if(TESTS)
     endif(MICROSERVICE)
 
 else()
-    message("Rk: building .so")
+    message("Rk: building library")
     add_library(FlashLogger INTERFACE)
     target_include_directories(FlashLogger
         INTERFACE

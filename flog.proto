@@ -8,9 +8,9 @@ service FLogRemoteLogger {
 }
 
 message LogLine {
-  string log = 1;
+  bytes log = 1;
 }
 
 message Response {
-  string message = 1;
+  bytes message = 1;
 }
