@@ -83,7 +83,6 @@ if(MICROSERVICE)
     set(fl_grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/flog.grpc.pb.cc")
     set(fl_grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/flog.grpc.pb.h")
 
-    message("Rk:_PROTOBUF_PROTOC ${_PROTOBUF_PROTOC}")
     add_custom_command(
           OUTPUT "${fl_proto_srcs}" "${fl_proto_hdrs}" "${fl_grpc_srcs}" "${fl_grpc_hdrs}"
           COMMAND ${_PROTOBUF_PROTOC}
@@ -158,12 +157,11 @@ link_directories(
 
 # Create executable
 if(MICROSERVICE)
-    set(LINK_LIBRARIES ${Boost_LIBRARIES} grpc++ gtest)
+    set(LINK_LIBRARIES ${Boost_LIBRARIES} grpc++)
 else()
-    set(LINK_LIBRARIES ${Protobuf_LIBRARIES} ${Boost_LIBRARIES} gtest)
+    set(LINK_LIBRARIES ${Protobuf_LIBRARIES} ${Boost_LIBRARIES})
 endif(MICROSERVICE)
 
-message("Rk: LINK_LIBRARIES: ${_PROTOBUF_LIBPROTOBUF}")
 if(TESTS)
     message("Rk: building EXE")
     if(MICROSERVICE)
@@ -175,6 +173,7 @@ if(TESTS)
             -Wl,--no-as-needed -lprofiler
             -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
             ${LINK_LIBRARIES}
+            gtest
             fl_grpc_proto
             ${_REFLECTION}
             ${_GRPC_GRPCPP}
@@ -192,52 +191,39 @@ if(TESTS)
 
 else()
     message("Rk: building .so")
-    add_library(${PROJECT_NAME} INTERFACE)
-    if(MICROSERVICE)
-        install(FILES ${_HEADER_} ${_MICROSERVICE_HEADER_} ${CMAKE_CURRENT_SOURCE_DIR}/config.cfg
-          DESTINATION include/${PROJECT_NAME}
-        )
-    else()
-        install(FILES ${_HEADER_} ${CMAKE_CURRENT_SOURCE_DIR}/config.cfg
-          DESTINATION include/${PROJECT_NAME}
-        )
-    endif(MICROSERVICE)
+    add_library(FlashLogger INTERFACE)
+    target_include_directories(FlashLogger
+        INTERFACE
+            $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>
+            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
-    #target_include_directories(${PROJECT_NAME} INTERFACE iinclude/${PROJECT_NAME)
-    install(TARGETS ${PROJECT_NAME}
-        EXPORT ${PROJECT_NAME}
-        RUNTIME DESTINATION lib
-        ARCHIVE DESTINATION lib
-        LIBRARY DESTINATION lib
-     )
-    install(
-        EXPORT ${PROJECT_NAME}
-        DESTINATION lib/cmake/${PROJECT_NAME} COMPONENT dev
-        PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
+    include(CMakePackageConfigHelpers)
+    write_basic_package_version_file(
+        "${PROJECT_BINARY_DIR}/FlashLoggerConfigVersion.cmake"
+        VERSION 0.1
+        COMPATIBILITY AnyNewerVersion
     )
-    set(${PROJECT_NAME}_INCLUDE_DIR ${CMAKE_INSTALL_PREFIX}/include/${PROJECT_NAME)
-    configure_file(
-      ${PROJECT_SOURCE_DIR}/${PROJECT_NAME}.cmake.in
-      ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config-install.cmake
-      @ONLY
+
+    install(TARGETS FlashLogger
+        EXPORT FlashLogger
+        LIBRARY DESTINATION lib COMPONENT Runtime
+        ARCHIVE DESTINATION lib COMPONENT Development
+        RUNTIME DESTINATION bin COMPONENT Runtime
+        PUBLIC_HEADER DESTINATION include COMPONENT Development
+        BUNDLE DESTINATION bin COMPONENT Runtime
     )
-    install(
-      FILES ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config-install.cmake
-      DESTINATION lib/cmake/${PROJECT_NAME} COMPONENT dev
-      RENAME ${PROJECT_NAME}Config.cmake
-      PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
+
+    include(CMakePackageConfigHelpers)
+    configure_package_config_file(
+        "${PROJECT_SOURCE_DIR}/cmake/FlashLoggerConfig.cmake.in"
+        "${PROJECT_BINARY_DIR}/FlashLoggerConfig.cmake"
+        INSTALL_DESTINATION lib/cmake/FlashLogger
     )
-    target_link_libraries(${PROJECT_NAME} INTERFACE
-        -lpthread
-        -latomic
-        ${LINK_LIBRARIES}
-    )
+
+    install(EXPORT FlashLogger DESTINATION lib/cmake/FlashLogger)
+    install(FILES "${PROJECT_BINARY_DIR}/FlashLoggerConfigVersion.cmake"
+                  "${PROJECT_BINARY_DIR}/FlashLoggerConfig.cmake"
+            DESTINATION lib/cmake/FlashLogger)
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ DESTINATION include/FlashLogger
+            FILES_MATCHING PATTERN "*.h")
 endif()
-
-
-
-
-
-
-
-
