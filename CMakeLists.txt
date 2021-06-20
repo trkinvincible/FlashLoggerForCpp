@@ -52,8 +52,7 @@ FetchContent_Declare(
 )
 set(protobuf_BUILD_TESTS OFF)
 FetchContent_MakeAvailable(protobuf)
-find_package(Protobuf REQUIRED)
-include_directories()
+#find_package(Protobuf REQUIRED)
 
 # googletest
 if(TESTS)
@@ -105,7 +104,7 @@ if(MICROSERVICE)
       ${_PROTOBUF_LIBPROTOBUF})
 
     SET( _MICROSERVICE_HEADER_
-        ${CMAKE_CURRENT_SOURCE_DIR}/FLogMicroServiceWritter.h)
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/FLogMicroServiceWritter.h)
 
 #    if(TESTS)
 #        set(FETCHCONTENT_BASE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
@@ -123,16 +122,16 @@ SET( _SOURCES_
 )
 
 SET( _HEADER_
-    ${CMAKE_CURRENT_SOURCE_DIR}/FLogManager.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/FLogCircularBuffer.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/FLogLine.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/FLogWritter.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/FLogFileWritter.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/FLogUtilStructs.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/config.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/FLogManager.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/FLogCircularBuffer.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/FLogLine.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/FLogWritter.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/FLogFileWritter.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/FLogUtilStructs.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/config.h
 )
 SET( _GTEST_HEADER_
-    ${CMAKE_CURRENT_SOURCE_DIR}/gtest.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/gtest.h
 )
 
 # include Definitions
@@ -151,15 +150,17 @@ endif(TESTS)
 
 # link Directories
 link_directories(
+    ${CMAKE_INSTALL_PREFIX}/lib
     ${Boost_LIBRARY_DIRS}
     ${CMAKE_INSTALL_PREFIX}/lib
 )
 
+message("PROTOBUF_LIBRARY : ${PROTOBUF_LIBRARY}")
 # Create executable
 if(MICROSERVICE)
     set(LINK_LIBRARIES ${Boost_LIBRARIES} grpc++)
 else()
-    set(LINK_LIBRARIES ${Protobuf_LIBRARIES} ${Boost_LIBRARIES})
+    set(LINK_LIBRARIES ${PROTOBUF_LIBRARY} ${Boost_LIBRARIES})
 endif(MICROSERVICE)
 
 if(TESTS)
@@ -186,6 +187,7 @@ if(TESTS)
             -latomic
             -Wl,--no-as-needed -lprofiler
             -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
+            gtest
             ${LINK_LIBRARIES})
     endif(MICROSERVICE)
 
@@ -194,7 +196,7 @@ else()
     add_library(FlashLogger INTERFACE)
     target_include_directories(FlashLogger
         INTERFACE
-            $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>
+            $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
     include(CMakePackageConfigHelpers)
@@ -215,15 +217,15 @@ else()
 
     include(CMakePackageConfigHelpers)
     configure_package_config_file(
-        "${PROJECT_SOURCE_DIR}/cmake/FlashLoggerConfig.cmake.in"
-        "${PROJECT_BINARY_DIR}/FlashLoggerConfig.cmake"
+        "${PROJECT_SOURCE_DIR}/cmake/FlashLoggerConfig.cmake"
+        "${PROJECT_BINARY_DIR}/cmake/FlashLoggerConfig.cmake"
         INSTALL_DESTINATION lib/cmake/FlashLogger
     )
 
-    install(EXPORT FlashLogger DESTINATION lib/cmake/FlashLogger)
+#    install(EXPORT FlashLogger DESTINATION lib/cmake/FlashLogger)
     install(FILES "${PROJECT_BINARY_DIR}/FlashLoggerConfigVersion.cmake"
                   "${PROJECT_BINARY_DIR}/FlashLoggerConfig.cmake"
             DESTINATION lib/cmake/FlashLogger)
-    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ DESTINATION include/FlashLogger
+    install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include DESTINATION include/FlashLogger
             FILES_MATCHING PATTERN "*.h")
 endif()

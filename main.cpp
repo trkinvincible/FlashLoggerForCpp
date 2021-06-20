@@ -28,9 +28,9 @@
 #include <type_traits>
 #include <string>
 
-#include "config.h"
-#include "gtest.h"
-#include "FLogManager.h"
+#include "./include/config.h"
+#include "./include/gtest.h"
+#include "./include/FLogManager.h"
 
 LEVEL FLogManager::mCurrentLevel = LEVEL::CRIT;
 GRANULARITY FLogManager::mCurrentGranularity = GRANULARITY::FULL;
@@ -72,6 +72,7 @@ int main(int argc, char *argv[])
         FLOG_CRIT << __FUNCTION__ << "  CRIT";
     }else{
 
+        std::cout << "run test" << std::endl;
         RunGTest(argc, argv, config);
     }
 
