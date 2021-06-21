@@ -84,5 +84,12 @@ catch(std::exception const& e) {
 FLogManager::globalInstance(&config).SetCopyrightAndStartService(s_copyright);
 
 FLogManager::globalInstance().SetLogLevel("INFO");
+
+FLOG_INFO << __FUNCTION__ << "  INFO";
+FLOG_WARN << __FUNCTION__ << "  WARN";
+FLOG_CRIT << __FUNCTION__ << "  CRIT";
 ```
+```diff
++ particularly designed to search & replace std::cout with FLOG_INFO/FLOG_WARN/FLOG_CRIT 
+...
 
