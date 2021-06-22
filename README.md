@@ -10,7 +10,7 @@ Improved Latency with aligned and continuous memory access, instruction and data
 
 ## Steps to integrate as seperate microservice
 1. Deploy the [gRPC](https://github.com/grpc/grpc) powered C++ [server impl](https://github.com/trkinvincible/FlashLoggerForCpp-Server) 
-in [NGINX](https://www.nginx.com/wp-content/uploads/2018/03/gRPC-nginx-proxy.png)  ref: [SETUP](https://www.nginx.com/blog/nginx-1-13-10-grpc/)
+in NGINX web server ![NGINX](https://www.nginx.com/wp-content/uploads/2018/03/gRPC-nginx-proxy.png)  ref: [SETUP](https://www.nginx.com/blog/nginx-1-13-10-grpc/)
 for **_load_ _balancing_ , _security_, _API gateway_ and reverse proxy routing**
 2. Host the webserver in [NGINX docker](https://hub.docker.com/_/nginx) or any cloud 
 
