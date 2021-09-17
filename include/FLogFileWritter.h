@@ -49,8 +49,7 @@ public:
 
     ~FLogFileWritter() noexcept{
 
-        mLogFile.reset();
-        close(mFile);
+        mLogFile->Close();
     }
 
     bool WriteToFile(const char* data, int size) {
@@ -79,5 +78,5 @@ public:
 
 private:
     int mFile;
-    std::unique_ptr<ZeroCopyOutputStream> mLogFile;
+    std::unique_ptr<FileOutputStream> mLogFile;
 };

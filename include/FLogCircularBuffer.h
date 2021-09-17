@@ -52,7 +52,7 @@ public:
         std::free(mBuffer);
     }
 
-    bool WriteData(ProducerMsg&& p_data){
+    bool WriteData(const ProducerMsg& p_data){
 
         auto pos = mWritePos.load(std::memory_order_acquire);
 
@@ -91,8 +91,12 @@ public:
                 }else if constexpr (std::is_same_v<ArgT, const char*>){
 
                     auto length = arg ? strlen(arg) : 0;
-                    std::uninitialized_move_n(arg, length, (mCurrentWriteBuffer + mBytesWrittenInCurrentWriteBuffer));
-                    mBytesWrittenInCurrentWriteBuffer += length;
+                    if (length){
+                        std::uninitialized_move_n(arg, length, (mCurrentWriteBuffer + mBytesWrittenInCurrentWriteBuffer));
+                        mBytesWrittenInCurrentWriteBuffer += length;
+                    }
+                }else{
+                    static_assert (always_false_v<ArgT>, "unsupported type");
                 }
             }, v);
         }

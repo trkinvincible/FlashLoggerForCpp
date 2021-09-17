@@ -29,7 +29,7 @@
 #include <thread>
 #include <type_traits>
 #include <chrono>
-#include <queue>
+#include <deque>
 #include <mutex>
 #include <future>
 #include <condition_variable>
@@ -52,9 +52,9 @@ class FLogManager{
 public:
     FLogManager(const FLogManager &rhs) = delete;
     FLogManager& operator=(const FLogManager &rhs) = delete;
-    static FLogManager& globalInstance(FLogConfig* p_Config = nullptr){
+    static FLogManager& globalInstance(std::unique_ptr<FLogConfig> p_Config = nullptr){
 
-        static FLogManager s_Self(p_Config);
+        static FLogManager s_Self(std::move(p_Config));
         return s_Self;
     }
 
@@ -63,9 +63,10 @@ public:
         try{
 
             mHostAppExited.store(true, std::memory_order_relaxed);
-            mTasksFutures[0].get();
+            AddProdMsg(ProducerMsg(true, {"\n\n******FLog completed*******"}));
+            std::cout << "Producer Exit: " << std::boolalpha << mTasksFutures[0].get() << std::endl;
             mConsExit.store(true, std::memory_order_relaxed);
-            mTasksFutures[1].get();
+            std::cout << "Consumer Exit: " << std::boolalpha << mTasksFutures[1].get() << std::endl;
         }catch(std::exception& exp){
 
             std::cout << __FUNCTION__ << " FLOG service failed to exit: "
@@ -73,14 +74,16 @@ public:
         }
     }
 
-    FLogManager(const FLogConfig* p_Config) noexcept
-        :mConfig(p_Config),
+    FLogManager(std::unique_ptr<FLogConfig> p_Config) noexcept
       #if(USE_MICROSERVICE)
-          mWritterUtility(std::string(p_Config->data().server_ip +":"+ p_Config->data().server_port)),
+          :mWritterUtility(std::string(p_Config->data().server_ip +":"+ p_Config->data().server_port)),
       #else
-          mWritterUtility(std::string(p_Config->data().log_file_path +"/"+ p_Config->data().log_file_name)),
+          :mWritterUtility(std::string(p_Config->data().log_file_path +"/"+ p_Config->data().log_file_name)),
       #endif
-         mAsyncBuffer(new FLogCircularBuffer<FLogLine::type>(p_Config->data().size_of_ring_buffer)){}
+         mAsyncBuffer(new FLogCircularBuffer<FLogLine::type>(p_Config->data().size_of_ring_buffer)){
+
+        p_Config.swap(mConfig);
+    }
 
     void SetCopyrightAndStartService(const std::string& p_Data){
 
@@ -92,10 +95,10 @@ public:
         FLogManager::SetLogGranularity(val);
 
         mTasksFutures.reserve(2);
-        std::packaged_task<void(void)> taskProd(std::bind(&FLogManager::ProducerThreadRun, this));
-        mTasksFutures.emplace_back(std::move(taskProd.get_future()));
-        std::packaged_task<void(void)> taskCons(std::bind(&FLogManager::ConsumerThreadRun, this));
-        mTasksFutures.emplace_back(std::move(taskCons.get_future()));
+        std::packaged_task<bool(void)> taskProd(std::bind(&FLogManager::ProducerThreadRun, this));
+        mTasksFutures.push_back(std::move(taskProd.get_future()));
+        std::packaged_task<bool(void)> taskCons(std::bind(&FLogManager::ConsumerThreadRun, this));
+        mTasksFutures.push_back(std::move(taskCons.get_future()));
 
         std::thread t1(std::move(taskProd));
         std::thread t2(std::move(taskCons));
@@ -145,103 +148,112 @@ public:
     void AddProdMsg(const ProducerMsg&& p_Msg){
 
         static volatile uint s_count = 0;
-        if (mProdMutex.try_lock()){
-
-            ++s_count;
-            mProdMessageBox.push(p_Msg);
+        {
+            std::unique_lock<std::recursive_mutex> lk(mProdMutex);
+            if (!lk.owns_lock())
+                mProdCondVariable.wait(lk);
         }
+
+        mProdMutex.lock();
+        ++s_count;
+        mProdMessageBox.push_back(std::move(p_Msg));
         if (p_Msg.isEnd){
 
+            static int l;
             ++s_count;
-            while(--s_count) mProdMutex.unlock();
+            while(--s_count) {
+                mProdMutex.unlock();
+            }
             mProdCondVariable.notify_one();
         }
     }
 
-    void ProducerThreadRun(){
+    bool ProducerThreadRun(){
 
         std::once_flag startConsumer;
         while (true){
 
-            // Wait for a message to be added to the queue
-            std::unique_lock<std::recursive_mutex> lk1(mProdMutex, std::defer_lock);
-            if (mProdMessageBox.empty()){
+            try{
+                std::unique_lock<std::recursive_mutex> lk(mProdMutex);
+                mProdCondVariable.wait(lk, [this](){
+                    return !mProdMessageBox.empty();
+                });
+                while (!mProdMessageBox.empty()){
 
-                // Inteligent lock only if empty.wait() will unlock the mutex for "AddProdMsg" until queue not empty
-                lk1.lock();
-                if (!mProdCondVariable.wait_for(lk1, 2s, [this]() {
-                    return !mProdMessageBox.empty() && mHostAppExited.load();
-                })){
-                    return;
+                    if (!mAsyncBuffer->WriteData(mProdMessageBox.front())){
+                        continue;
+                    }
+
+                    mProdMessageBox.pop_front();
+                    std::call_once(startConsumer, [this](){ mStartReader.store(true, std::memory_order_relaxed); });
                 }
-            }else{
+                lk.unlock();
+                if (mHostAppExited.load(std::memory_order_relaxed)){
 
-                lk1.lock();
-            }
-
-            while (!mProdMessageBox.empty()){
-
-                ProducerMsg msg(mProdMessageBox.front());
-                while (!mAsyncBuffer->WriteData(std::move(msg))){
-
-                    std::this_thread::sleep_for(70ms);
-                    msg = mProdMessageBox.front();
+                    return true;
                 }
-                mProdMessageBox.pop();
+                mProdCondVariable.notify_one();
+            }catch(std::exception& exp){
 
-                std::call_once(startConsumer, [this](){ mStartReader.store(true, std::memory_order_relaxed); });
+                std::cout << "producer exception: " << exp.what();
+                return false;
             }
-            lk1.unlock();
         }
     }
 
-    void ConsumerThreadRun(){
+    bool ConsumerThreadRun(){
+
+        // Let some data get logged first
+        if (mStartReader.load(std::memory_order_relaxed) == false)
+            std::this_thread::sleep_for(2ms);
 
         while(true){
 
-            // Let some data get logged first
-            if (mStartReader.load(std::memory_order_relaxed) == false)
-                std::this_thread::sleep_for(2ms);
+            try{
+                char* start = nullptr; std::size_t end, pos;
+                if (mAsyncBuffer->ReadData(&start, end, pos)){
 
-            if (mConsExit.load(std::memory_order_relaxed)){
+                    if (mWritterUtility.WriteToFile(start, std::min(MAX_SLOT_LEN, end)))
+                        mAsyncBuffer->UnlockReadPos(pos);
+                }else{
 
-                char* start = nullptr; std::size_t end;
-                while (!mAsyncBuffer->FlushBuffer(&start, end)){
-
-                    if (end != 0){
-
-                        mWritterUtility.WriteToFile(start, std::min(MAX_SLOT_LEN, end));
-                    }
+                    std::this_thread::sleep_for(10ms);
                 }
 
-                return;
-            }
+                if (mConsExit.load(std::memory_order_relaxed)){
 
-            char* start = nullptr; std::size_t end, pos;
-            if (mAsyncBuffer->ReadData(&start, end, pos)){
+                    char* start = nullptr; std::size_t end;
+                    while (!mAsyncBuffer->FlushBuffer(&start, end)){
 
-                if (mWritterUtility.WriteToFile(start, std::min(MAX_SLOT_LEN, end)))
-                    mAsyncBuffer->UnlockReadPos(pos);
-            }else{
+                        if (end != 0){
 
-                std::this_thread::sleep_for(10ms);
+                            mWritterUtility.WriteToFile(start, std::min(MAX_SLOT_LEN, end));
+                        }
+                    }
+                    return true;
+                }
+
+            }catch(std::exception& exp){
+
+                std::cout << "consumer exception: " << exp.what();
+                return false;
             }
         }
     }
 
 private:
-    const FLogConfig* mConfig;
+    std::unique_ptr<FLogConfig> mConfig;
 
     std::unique_ptr<FLogCircularBuffer<FLogLine::type>> mAsyncBuffer;
 
     std::thread mProducerThread;
-    std::queue<ProducerMsg> mProdMessageBox;
+    std::deque<ProducerMsg> mProdMessageBox;
     std::recursive_mutex mProdMutex;
     std::condition_variable_any mProdCondVariable;
 
     std::thread mConsumerThread;
 
-    std::vector<std::future<void>> mTasksFutures;
+    std::vector<std::future<bool>> mTasksFutures;
 
     static LEVEL mCurrentLevel;
     static GRANULARITY mCurrentGranularity;

@@ -38,9 +38,9 @@ GRANULARITY FLogManager::mCurrentGranularity = GRANULARITY::FULL;
 int main(int argc, char *argv[])
 {
     //Input: FlashLogger <size_of_ring_buffer> <log_file_path> <log_file_name>
-    FLogConfig config([](flashlogger_config_data &d, boost::program_options::options_description &desc){
+    std::unique_ptr<FLogConfig> config = std::make_unique<FLogConfig>([](flashlogger_config_data &d, boost::program_options::options_description &desc){
         desc.add_options()
-                ("FlashLogger.size_of_ring_buffer", boost::program_options::value<short>(&d.size_of_ring_buffer)->default_value(5), "size of buffer to log asyncoronously")
+                ("FlashLogger.size_of_ring_buffer", boost::program_options::value<short>(&d.size_of_ring_buffer)->default_value(50), "size of buffer to log asyncoronously")
                 ("FlashLogger.log_file_path", boost::program_options::value<std::string>(&d.log_file_path)->default_value("../"), "log file path")
                 ("FlashLogger.log_file_name", boost::program_options::value<std::string>(&d.log_file_name)->default_value("flashlog.txt"), "log file name")
                 ("FlashLogger.run_test", boost::program_options::value<short>(&d.run_test)->default_value(1), "choose to run test")
@@ -50,7 +50,7 @@ int main(int argc, char *argv[])
 
     try {
 
-        config.parse(argc, argv);
+        config->parse(argc, argv);
     }
     catch(std::exception const& e) {
 
@@ -58,11 +58,11 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    if (!config.data().run_test){
+    if (!config->data().run_test){
 
         try{
 
-            FLogManager::globalInstance(&config).SetCopyrightAndStartService(s_copyright);
+            FLogManager::globalInstance(std::move(config)).SetCopyrightAndStartService(s_copyright);
         }catch(std::exception& exp){
 
             std::cout << __FUNCTION__ << "  FLOG service not started: " << exp.what() << std::endl;
@@ -72,8 +72,8 @@ int main(int argc, char *argv[])
         FLOG_CRIT << __FUNCTION__ << "  CRIT";
     }else{
 
-        std::cout << "run test" << std::endl;
-        RunGTest(argc, argv, config);
+        RunGTest(argc, argv, std::move(config));
+        FLogManager::globalInstance().SetLogLevel("INFO");
     }
 
     return 0;

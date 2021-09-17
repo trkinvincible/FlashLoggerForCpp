@@ -66,6 +66,7 @@ public:
     }
     template<typename DATA_TYPE>
     friend std::ostream& operator<<(std::ostream&, const config<DATA_TYPE>&);
+
 private:
     const add_options_type add_options;
     static constexpr const char* config_name_default{"../config.cfg"};

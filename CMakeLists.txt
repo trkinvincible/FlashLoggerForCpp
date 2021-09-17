@@ -9,6 +9,7 @@ if(COMPILER_SUPPORTS_MARCH_NATIVE)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
 endif()
 set(CMAKE_CXX_STANDARD 20)
+set(MAKE_CXX_COMPILER_LAUNCHER ccache)
 #set(CMAKE_CXX_FLAGS "-pg") - use only with GCC 's own profiler
 
 if (CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)

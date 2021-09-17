@@ -53,9 +53,9 @@ TEST(CacheManagerTest, LOG_CRITICAL) {
     FLOG_CRIT << "Hello World Test CRIT";
 }
 
-int RunGTest(int argc, char **argv, FLogConfig& p_Config) {
+int RunGTest(int argc, char **argv, auto&& p_Config) {
 
-    FLogManager& flog_service = FLogManager::globalInstance(&p_Config);
+    FLogManager& flog_service = FLogManager::globalInstance(std::move(p_Config));
     flog_service.SetCopyrightAndStartService(s_copyright);
     FLogManager::SetLogGranularity("FULL");
     testing::InitGoogleTest(&argc, argv);
