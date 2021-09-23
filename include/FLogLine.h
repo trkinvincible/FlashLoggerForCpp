@@ -39,10 +39,13 @@ void AddProdMsgExternal(ProducerMsg&&);
 class FLogLine {
 
     static constexpr int MAX_DATE_TIME_STRING_LENGTH = 20;
-    static constexpr int MAX_FUNCTION_NAME_LENGTH    = 100;
-    static constexpr int MAX_LINE_NAME_LENGTH        = sizeof(uint32_t);
-    static constexpr int MAX_USER_DATA_LENGTH        = 200;
+    static constexpr int MAX_FUNCTION_NAME_LENGTH    = 100;  
+    static constexpr int MAX_LINE_NAME_LENGTH        = 5;    // 5 digits
+    static constexpr int MAX_USER_DATA_LENGTH        = 194;
     static constexpr int MAX_DELIMITER_LENGTH        = 1;
+    //                                                 ----
+    //                                                 320 (multiples of 64)
+    //                                                 ----    
 
 public:
     struct type {
