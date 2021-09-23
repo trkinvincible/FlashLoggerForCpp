@@ -67,6 +67,12 @@ public:
             std::cout << "Producer Exit: " << std::boolalpha << mTasksFutures[0].get() << std::endl;
             mConsExit.store(true, std::memory_order_relaxed);
             std::cout << "Consumer Exit: " << std::boolalpha << mTasksFutures[1].get() << std::endl;
+
+#if(!USE_MICROSERVICE)
+                const std::string tmp = std::string("subl ") + std::string(mConfig->data().log_file_path +
+                                                                           "/"+ mConfig->data().log_file_name);
+                system(tmp.data());
+#endif
         }catch(std::exception& exp){
 
             std::cout << __FUNCTION__ << " FLOG service failed to exit: "

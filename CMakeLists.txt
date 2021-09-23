@@ -48,7 +48,7 @@ endif()
 FetchContent_Declare(
   protobuf
   GIT_REPOSITORY https://github.com/protocolbuffers/protobuf.git
-  GIT_TAG        v3.17.3
+  GIT_TAG        master
   SOURCE_SUBDIR  cmake
 )
 set(protobuf_BUILD_TESTS OFF)

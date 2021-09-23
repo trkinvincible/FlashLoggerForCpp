@@ -42,7 +42,7 @@ class FLogCircularBuffer {
 public:
     FLogCircularBuffer(const std::size_t p_BufferSize)
         :mBufferSize(p_BufferSize + 1),
-          mBuffer(static_cast<T*>(std::aligned_alloc(CACHELINE_SIZE, sizeof(T) * mBufferSize + 1))){
+          mBuffer(static_cast<T*>(std::aligned_alloc(CACHELINE_SIZE, sizeof(T) * mBufferSize))){
 
         mCurrentWriteBuffer = reinterpret_cast<char*>(&mBuffer[mWritePos]);
     }
@@ -73,8 +73,8 @@ public:
 
         if (mBytesWrittenInCurrentWriteBuffer == 0){
 
-            mBufferStatesPerSlot[pos].first.store(SLOT_LOCKED, std::memory_order_release);
             mBufferStatesPerSlot[pos].second = 0;
+            mBufferStatesPerSlot[pos].first.store(SLOT_LOCKED, std::memory_order_release);
         }
 
         for(const auto& v: p_data.data) {
@@ -111,9 +111,9 @@ public:
             mBufferStatesPerSlot[oldWritePos].second = len;
             mBufferStatesPerSlot[oldWritePos].first.store(SLOT_UNLOCKED, std::memory_order_release);
 
+            mWritePos.store(newWritePos, std::memory_order_release);
             mBytesWrittenInCurrentWriteBuffer = 0;
             mCurrentWriteBuffer = reinterpret_cast<char*>(&mBuffer[mWritePos]);
-            mWritePos.store(newWritePos, std::memory_order_release);                
         }
 
         return true;
@@ -136,8 +136,8 @@ public:
 
         while(true){
 
-            auto oldWritePos = mWritePos.load(std::memory_order_acquire);
             auto oldReadPos = pos;
+            auto oldWritePos = mWritePos.load(std::memory_order_acquire);
             if (oldWritePos == oldReadPos){
                 return false;
             }
@@ -155,7 +155,7 @@ public:
     bool FlushBuffer(char** p_Data, std::size_t& p_Length){
 
         static int currIndex = -1;
-        static const bool END_OF_BUFFER = true;
+        static constexpr bool END_OF_BUFFER = true;
         if (++currIndex == mBufferSize - 1)
             return END_OF_BUFFER;
 
@@ -174,7 +174,7 @@ private:
     T* mBuffer;
     const std::size_t mBufferSize;
     std::atomic<std::size_t> mWritePos{0}, mReadPos{0};
-    std::array<std::pair<std::atomic_bool, std::size_t>, N> mBufferStatesPerSlot;
+    std::array<std::pair<std::atomic_bool, std::int32_t>, N> mBufferStatesPerSlot;
 
     // Helper states
     char* mCurrentWriteBuffer;
