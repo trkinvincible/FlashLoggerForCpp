@@ -111,9 +111,9 @@ public:
             mBufferStatesPerSlot[oldWritePos].second = len;
             mBufferStatesPerSlot[oldWritePos].first.store(SLOT_UNLOCKED, std::memory_order_release);
 
-            mWritePos.store(newWritePos, std::memory_order_release);
             mBytesWrittenInCurrentWriteBuffer = 0;
             mCurrentWriteBuffer = reinterpret_cast<char*>(&mBuffer[mWritePos]);
+            mWritePos.store(newWritePos, std::memory_order_release);                
         }
 
         return true;
