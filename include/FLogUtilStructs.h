@@ -86,32 +86,9 @@ inline uint64_t FLogNow(){
 // helper constant for the visitor #3
 template<class> inline constexpr bool always_false_v = false;
 
-#define FLOG_INFO FLogLine() = [](const char* f, std::uint32_t l)->const FLogLine&{\
-                  static FLogLine flog; \
-                  static FLogLineDummy flogDummy; \
-                  if (FLogManager::toLog(LEVEL::INFO)){ \
-                    if (FLogManager::IsFull()) \
-                      flog.InitData(FLogNow(), f,l); \
-                    return flog;}\
-                  return flogDummy;}(__PRETTY_FUNCTION__,__LINE__)
-
-#define FLOG_WARN FLogLine() = [](const char* f, std::uint32_t l)->const FLogLine&{\
-                  static FLogLine flog; \
-                  static FLogLineDummy flogDummy; \
-                  if (FLogManager::toLog(LEVEL::WARN)){ \
-                    if (FLogManager::IsFull()) \
-                      flog.InitData(FLogNow(), f,l); \
-                    return flog;}\
-                  return flogDummy;}(__PRETTY_FUNCTION__,__LINE__)
-
-#define FLOG_CRIT FLogLine() = [](const char* f, std::uint32_t l)->const FLogLine&{\
-                  static FLogLine flog; \
-                  static FLogLineDummy flogDummy; \
-                  if (FLogManager::toLog(LEVEL::CRIT)){ \
-                    if (FLogManager::IsFull()) \
-                      flog.InitData(FLogNow(), f,l); \
-                    return flog;}\
-                  return flogDummy;}(__PRETTY_FUNCTION__,__LINE__)
+#define FLOG_INFO FLogLine() = FLogManager::globalInstance().getFlogLine(LEVEL::INFO, __FUNCTION__, __LINE__)
+#define FLOG_WARN FLogLine() = FLogManager::globalInstance().getFlogLine(LEVEL::WARN, __FUNCTION__, __LINE__)
+#define FLOG_CRIT FLogLine() = FLogManager::globalInstance().getFlogLine(LEVEL::CRIT, __FUNCTION__, __LINE__)
 
 #endif /* FLOG_UTIL_HPP */
 

@@ -127,6 +127,18 @@ public:
         t2.detach();
     }
 
+    const FLogLine& getFlogLine(const LEVEL p_Level, const char* f, std::uint32_t l){
+            return [p_Level, f, l]()->const FLogLine&{
+              static FLogLine flog;
+              static FLogLineDummy flogDummy;
+              if (FLogManager::toLog(p_Level)){
+                if (FLogManager::IsFull())
+                  flog.InitData(FLogNow(), f,l);
+                return flog;}
+              return flogDummy;
+            }();
+    }
+
     static void SetLogLevel(std::string p_level)noexcept{
 
         if (p_level.empty()) return;
