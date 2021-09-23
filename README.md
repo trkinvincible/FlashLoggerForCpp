@@ -22,6 +22,9 @@ for **_load_ _balancing_ , _security_, _API gateway_ and reverse proxy routing**
 set(TESTS OFF CACHE INTERNAL "")
 set(MICROSERVICE OFF CACHE INTERNAL "")
 
+#boost C++
+find_package(Boost COMPONENTS program_options REQUIRED)
+
 include(FetchContent)
 find_library(FLASHLOGGER_LIB
   NAMES FlashLogger
@@ -31,7 +34,7 @@ if(NOT FLASHLOGGER_LIB)
     FetchContent_Declare(
       FlashLogger
       GIT_REPOSITORY https://github.com/trkinvincible/FlashLoggerForCpp.git
-      GIT_TAG        v1.3
+      GIT_TAG        master
     )
     FetchContent_MakeAvailable(FlashLogger)
 endif()
@@ -61,6 +64,9 @@ endif(MICROSERVICE)
 #include <FLogManager.h>
 #include <config.h>
 
+LEVEL FLogManager::mCurrentLevel = LEVEL::CRIT;
+GRANULARITY FLogManager::mCurrentGranularity = GRANULARITY::FULL;
+
 std::unique_ptr<FLogConfig> config = std::make_unique<FLogConfig>([](flashlogger_config_data &d, boost::program_options::options_description &desc){
         desc.add_options()
                 ("FlashLogger.size_of_ring_buffer", boost::program_options::value<short>(&d.size_of_ring_buffer)->default_value(50), "size of buffer to log")
@@ -85,9 +91,6 @@ FLogManager::globalInstance(std::move(config)).SetCopyrightAndStartService(s_cop
 
 FLogManager::globalInstance().SetLogLevel("INFO");
 
-FLOG_INFO << __FUNCTION__ << "  INFO";
-FLOG_WARN << __FUNCTION__ << "  WARN";
-FLOG_CRIT << __FUNCTION__ << "  CRIT";
 ```
 ```diff
 + particularly designed to search & replace std::cout with FLOG_INFO/FLOG_WARN/FLOG_CRIT 
