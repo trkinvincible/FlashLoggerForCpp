@@ -105,6 +105,7 @@ private:
     mutable bool mIgnore{true};
 };
 
+// Null Object Design pattern
 struct FLogLineDummy final : public FLogLine{
 
     const FLogLineDummy& operator<<(const supported_loggable_type&& p_Arg) const override{
