@@ -132,9 +132,11 @@ public:
               static FLogLine flog;
               static FLogLineDummy flogDummy;
               if (FLogManager::toLog(p_Level)){
-                if (FLogManager::IsFull())
+                if (FLogManager::IsFull()){
                   flog.InitData(FLogNow(), f,l);
-                return flog;}
+                }
+                return flog;
+              }
               return flogDummy;
             }();
     }
