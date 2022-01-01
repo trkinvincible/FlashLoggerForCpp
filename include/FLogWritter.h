@@ -36,7 +36,7 @@ class FLogWritter : public T
 public:
     FLogWritter(const std::string& p_Data):T(p_Data){ }
 
-    bool WriteToFile(const char* data, int size) {
+    bool WriteToFile(const std::uint8_t* data, int size) {
         return T::WriteToFile(data, size);
     }
 };

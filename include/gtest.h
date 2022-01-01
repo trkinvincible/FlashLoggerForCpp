@@ -37,14 +37,14 @@ TEST(FlashLoggerTest, LOG_INFO) {
                   << "double : " << static_cast<double>(i);
     }
 }
-TEST(CacheManagerTest, LOG_WARNING) {
+TEST(FlashLoggerTest, LOG_WARNING) {
 
     FLogManager::globalInstance().SetLogLevel("WARN");
 
     FLOG_WARN << "Hello World Test WARN";
     FLOG_CRIT << "Hello World Test CRIT";
 }
-TEST(CacheManagerTest, LOG_CRITICAL) {
+TEST(FlashLoggerTest, LOG_CRITICAL) {
 
     FLogManager::globalInstance().SetLogLevel("CRIT");
 

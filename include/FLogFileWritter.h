@@ -45,16 +45,12 @@ public:
         mFile = open(p_FileName.c_str(), O_WRONLY | O_CREAT | O_TRUNC);
 #endif
         mLogFile.reset(new FileOutputStream(mFile));
+        mLogFile->SetCloseOnDelete(true);
     }
 
-    ~FLogFileWritter() noexcept{
+    bool WriteToFile(const std::uint8_t* data, int size) {
 
-        mLogFile->Close();
-    }
-
-    bool WriteToFile(const char* data, int size) {
-
-        const uint8_t* in = reinterpret_cast<const uint8_t*>(data);
+        const uint8_t* in = data;
         int in_size = size;
 
         void* out;

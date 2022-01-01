@@ -28,6 +28,7 @@
 #include <variant>
 #include <array>
 #include <string>
+#include <chrono>
 
 using namespace std::chrono_literals;
 const std::string s_copyright =
@@ -80,11 +81,12 @@ struct ProducerMsg{
 
 inline uint64_t FLogNow(){
 
-    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
 // helper constant for the visitor #3
-template<class> inline constexpr bool always_false_v = false;
+template<class>
+inline constexpr bool always_false_v = false;
 
 #define FLOG_INFO FLogLine() = FLogManager::globalInstance().getFlogLine(LEVEL::INFO, __FUNCTION__, __LINE__)
 #define FLOG_WARN FLogLine() = FLogManager::globalInstance().getFlogLine(LEVEL::WARN, __FUNCTION__, __LINE__)

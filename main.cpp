@@ -73,7 +73,6 @@ int main(int argc, char *argv[])
     }else{
 
         RunGTest(argc, argv, std::move(config));
-        FLogManager::globalInstance().SetLogLevel("INFO");
     }
 
     return 0;

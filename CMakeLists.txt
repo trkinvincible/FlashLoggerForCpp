@@ -8,7 +8,7 @@ CHECK_CXX_COMPILER_FLAG("-march=native" COMPILER_SUPPORTS_MARCH_NATIVE)
 if(COMPILER_SUPPORTS_MARCH_NATIVE)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
 endif()
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 set(MAKE_CXX_COMPILER_LAUNCHER ccache)
 #set(CMAKE_CXX_FLAGS "-pg") - use only with GCC 's own profiler
 
@@ -180,10 +180,10 @@ if(TESTS)
         add_executable(${PROJECT_NAME}_EXE ${_SOURCES_} ${_HEADER_} ${_GTEST_HEADER_})
         target_link_libraries(${PROJECT_NAME}_EXE
             -lpthread
-            -ltcmalloc
+#            -ltcmalloc
             -latomic
             -Wl,--no-as-needed -lprofiler
-            -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
+#            -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
             gtest
             ${LINK_LIBRARIES})
     endif(MICROSERVICE)

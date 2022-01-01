@@ -22,17 +22,21 @@
 
 // Author: Radhakrishnan Thangavel (https://github.com/trkinvincible)
 
-#ifndef FLOG_CIRCULAR_BUFFER_HPP
-#define FLOG_CIRCULAR_BUFFER_HPP
+#pragma once
 
 #include <iostream>
 #include <cstdlib>
 #include <atomic>
-#include <vector>
+#include <deque>
+#include <variant>
+#include <memory>
+#include <type_traits>
+
+#include "FLogUtilStructs.h"
 
 class ProducerMsg;
 
-template<typename T, std::size_t N = 20>
+template<typename T>
 class FLogCircularBuffer {
 
     static constexpr bool SLOT_LOCKED   = true;
@@ -42,39 +46,44 @@ class FLogCircularBuffer {
 public:
     FLogCircularBuffer(const std::size_t p_BufferSize)
         :mBufferSize(p_BufferSize + 1),
-          mBuffer(static_cast<T*>(std::aligned_alloc(CACHELINE_SIZE, sizeof(T) * mBufferSize))){
+         mBuffer(static_cast<T*>(std::aligned_alloc(CACHELINE_SIZE, sizeof(T) * p_BufferSize))),
+         mCurrentWriteBuffer(reinterpret_cast<std::uint8_t*>(&mBuffer[mWritePos])){
 
-        mCurrentWriteBuffer = reinterpret_cast<char*>(&mBuffer[mWritePos]);
+        std::fill_n(reinterpret_cast<std::uint8_t*>(mBuffer), sizeof(T) * p_BufferSize, 0);
+        mBufferStatesPerSlot.resize(p_BufferSize);
+        static_assert(std::atomic<SlotsState>().is_always_lock_free, "SlotsState must be aggregate class");
     }
 
-    ~FLogCircularBuffer()noexcept{
+    FLogCircularBuffer(const FLogCircularBuffer&) = delete;
+    FLogCircularBuffer& operator=(const FLogCircularBuffer&) = delete;
+    FLogCircularBuffer(FLogCircularBuffer&&) = delete;
+    FLogCircularBuffer& operator=(FLogCircularBuffer&&) = delete;
+
+    ~FLogCircularBuffer(){
 
         std::free(mBuffer);
     }
 
     bool WriteData(const ProducerMsg& p_data){
 
-        auto pos = mWritePos.load(std::memory_order_acquire);
+        // Design note:
+        // # - step1 check if slot is locked before writing to it
+        // # - step2 if free lock it for writing
+        // # - step3 once written unlock slot and move forward for next write
 
-        if (mBufferStatesPerSlot[pos].first.load() == SLOT_LOCKED &&
-            mBufferStatesPerSlot[pos].second != 0){
+        auto pos = mWritePos;
+
+        const SlotsState& ss = std::atomic_load_explicit(&mBufferStatesPerSlot[pos], std::memory_order_acquire);
+        if (ss.state_is_locked == SLOT_LOCKED && ss.data_length != 0){
             return false;
         }
 
-        if (p_data.isEnd){
-
-            auto oldWritePos = pos;
-            auto newWritePos = getPositionAfter(oldWritePos);
-            // Buffer full . Reader is not fast enough so lets postpone.
-            if (newWritePos == mReadPos.load(std::memory_order_acquire)){
-                return false;
-            }
-        }
-
+        // at log end current slot will be unlocked and mBytesWrittenInCurrentWriteBuffer will be reset.
         if (mBytesWrittenInCurrentWriteBuffer == 0){
 
-            mBufferStatesPerSlot[pos].second = 0;
-            mBufferStatesPerSlot[pos].first.store(SLOT_LOCKED, std::memory_order_release);
+            SlotsState new_ss{0, SLOT_LOCKED};
+            std::atomic_store_explicit(&mBufferStatesPerSlot[pos], new_ss, std::memory_order_release);
+            // mCurrentWriteBuffer is always linear next so fix it in previous write itself.
         }
 
         for(const auto& v: p_data.data) {
@@ -96,90 +105,96 @@ public:
                         mBytesWrittenInCurrentWriteBuffer += length;
                     }
                 }else{
-                    static_assert (always_false_v<ArgT>, "unsupported type");
+                    static_assert(always_false_v<ArgT>, "unsupported type");
                 }
             }, v);
         }
 
         if (p_data.isEnd){
 
-            auto oldWritePos = pos;
-            auto newWritePos = getPositionAfter(oldWritePos);
-
             // Reset all helpers
             auto len = std::distance(mCurrentWriteBuffer, mCurrentWriteBuffer + mBytesWrittenInCurrentWriteBuffer);
-            mBufferStatesPerSlot[oldWritePos].second = len;
-            mBufferStatesPerSlot[oldWritePos].first.store(SLOT_UNLOCKED, std::memory_order_release);
+#if 1
+            std::string test;
+            test.resize(sizeof(T));
+            memcpy(test.data(), &mBuffer[pos], len);
+            std::cout << test;
+#endif
+            SlotsState new_ss{len, SLOT_UNLOCKED};
+            std::atomic_store_explicit(&mBufferStatesPerSlot[pos], new_ss, std::memory_order_release);
 
-            mWritePos.store(newWritePos, std::memory_order_release);
+            // prepare for next write
+            mWritePos = getPositionAfter(pos);
             mBytesWrittenInCurrentWriteBuffer = 0;
-            mCurrentWriteBuffer = reinterpret_cast<char*>(&mBuffer[mWritePos]);
+            mCurrentWriteBuffer = reinterpret_cast<std::uint8_t*>(&mBuffer[mWritePos]);
         }
 
         return true;
     }
 
-    void UnlockReadPos(const std::size_t p_Pos)noexcept{
+    bool ReadData(std::uint8_t** p_Data, std::size_t& p_Length, std::size_t& p_CurPos){
 
-        mBufferStatesPerSlot[p_Pos].second = 0;
-        mBufferStatesPerSlot[p_Pos].first.store(SLOT_UNLOCKED, std::memory_order_release);
-    }
+        // Design note:
+        // # - step1 check if slot is locked before reading from it
+        // # - step2 if free lock it for reading
+        // # - step3 in UnlockReadPos() unlock slot after writing to file.
 
-    bool ReadData(char** p_Data, std::size_t& p_Length, std::size_t& p_CurPos){
+        auto pos = mReadPos;
 
-        auto pos = mReadPos.load(std::memory_order_acquire);
-
-        if (mBufferStatesPerSlot[pos].first.load() == SLOT_LOCKED ||
-            mBufferStatesPerSlot[pos].second == 0){
+        const SlotsState& ss = std::atomic_load_explicit(&mBufferStatesPerSlot[pos], std::memory_order_acquire);
+        if (ss.state_is_locked == SLOT_LOCKED || ss.data_length == 0){
             return false;
         }
 
-        while(true){
+        SlotsState new_ss{ss.data_length, SLOT_LOCKED};
+        std::atomic_store_explicit(&mBufferStatesPerSlot[pos], new_ss, std::memory_order_release);
 
-            auto oldReadPos = pos;
-            auto oldWritePos = mWritePos.load(std::memory_order_acquire);
-            if (oldWritePos == oldReadPos){
-                return false;
-            }
-
-            mBufferStatesPerSlot[pos].first.store(SLOT_LOCKED, std::memory_order_release);
-            p_CurPos = pos;
-            *p_Data = reinterpret_cast<char*>(std::addressof(mBuffer[pos]));
-            p_Length = mBufferStatesPerSlot[pos].second;
-
-            if (mReadPos.compare_exchange_strong(oldReadPos, getPositionAfter(oldReadPos)))
-                return true;
-        }
+        p_CurPos = pos;
+        *p_Data = reinterpret_cast<std::uint8_t*>(std::addressof(mBuffer[pos]));
+        p_Length = ss.data_length;
     }
 
-    bool FlushBuffer(char** p_Data, std::size_t& p_Length){
+    void UnlockReadPos(const std::size_t p_Pos)noexcept{
+
+        SlotsState new_ss{0, SLOT_UNLOCKED};
+        std::atomic_store_explicit(&mBufferStatesPerSlot[p_Pos], new_ss, std::memory_order_release);
+        mReadPos = getPositionAfter(p_Pos);
+    }
+
+    bool FlushBuffer(std::uint8_t** p_Data, std::size_t& p_Length){
 
         static int currIndex = -1;
         static constexpr bool END_OF_BUFFER = true;
         if (++currIndex == mBufferSize - 1)
             return END_OF_BUFFER;
 
-        *p_Data = reinterpret_cast<char*>(std::addressof(mBuffer[currIndex]));
-        p_Length = mBufferStatesPerSlot[currIndex].second;
+        *p_Data = reinterpret_cast<std::uint8_t*>(std::addressof(mBuffer[currIndex]));
+        const SlotsState& ss = std::atomic_load(&mBufferStatesPerSlot[currIndex]);
+        p_Length = ss.data_length;
         return !END_OF_BUFFER;
     }
 
 private:
     constexpr std::size_t getPositionAfter(std::size_t pos) noexcept{
 
-        // Implement required policy to roll buffer
+        // Implement required policy to roll buffer. STL style one past last element is end.
         return ++pos == mBufferSize ? 0 : pos;
     }
 
-    T* mBuffer;
+    std::size_t mWritePos{0};
+    std::size_t mReadPos{0};
+
     const std::size_t mBufferSize;
-    std::atomic<std::size_t> mWritePos{0}, mReadPos{0};
-    std::array<std::pair<std::atomic_bool, std::int32_t>, N> mBufferStatesPerSlot;
+    T* const mBuffer;
+
+    // pack them together
+    struct SlotsState{
+        std::uint32_t data_length{0};
+        bool state_is_locked{SLOT_UNLOCKED};
+    };
+    std::deque<std::atomic<SlotsState>> mBufferStatesPerSlot;
 
     // Helper states
-    char* mCurrentWriteBuffer;
+    std::uint8_t* mCurrentWriteBuffer{nullptr};
     std::size_t mBytesWrittenInCurrentWriteBuffer{0};
 };
-
-#endif /* FLOG_CIRCULAR_BUFFER_HPP */
-

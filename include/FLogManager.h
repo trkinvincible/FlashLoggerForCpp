@@ -47,7 +47,7 @@
 
 class FLogManager{
 
-    static constexpr std::size_t MAX_SLOT_LEN = sizeof(FLogLine::type);
+    static constexpr std::size_t MAX_SLOT_LEN = sizeof(FLogLine);
 
 public:
     FLogManager(const FLogManager &rhs) = delete;
@@ -86,14 +86,14 @@ public:
       #else
           :mWritterUtility(std::string(p_Config->data().log_file_path +"/"+ p_Config->data().log_file_name)),
       #endif
-         mAsyncBuffer(new FLogCircularBuffer<FLogLine::type>(p_Config->data().size_of_ring_buffer)){
+         mAsyncBuffer(new FLogCircularBuffer<FLogLine>(p_Config->data().size_of_ring_buffer)){
 
         p_Config.swap(mConfig);
     }
 
     void SetCopyrightAndStartService(const std::string& p_Data){
 
-        mWritterUtility.WriteToFile(p_Data.c_str(), p_Data.length());
+        mWritterUtility.WriteToFile((std::uint8_t*)p_Data.c_str(), p_Data.length());
         // Configure the essential ENV variables
         std::string val = []()->const char* { if (char* buf=::getenv("FLOG_LOG_LEVEL")) return buf; return " "; }();
         FLogManager::SetLogLevel(val);
@@ -165,7 +165,7 @@ public:
     }
 
     friend void AddProdMsgExternal(ProducerMsg&& p_Msg);
-    void AddProdMsg(const ProducerMsg&& p_Msg){
+    void AddProdMsg(ProducerMsg&& p_Msg){
 
         static volatile uint s_count = 0;
         {
@@ -199,12 +199,15 @@ public:
                     return !mProdMessageBox.empty();
                 });
                 while (!mProdMessageBox.empty()){
-
-                    if (!mAsyncBuffer->WriteData(mProdMessageBox.front())){
-                        continue;
+                    const auto& data = mProdMessageBox.front();
+                    while(true){
+                        if (!mAsyncBuffer->WriteData(data)){
+                            std::this_thread::sleep_for(std::chrono::microseconds(5));
+                            continue;
+                        }
+                        mProdMessageBox.pop_front();
+                        break;
                     }
-
-                    mProdMessageBox.pop_front();
                     std::call_once(startConsumer, [this](){ mStartReader.store(true, std::memory_order_relaxed); });
                 }
                 lk.unlock();
@@ -225,24 +228,24 @@ public:
 
         // Let some data get logged first
         if (mStartReader.load(std::memory_order_relaxed) == false)
-            std::this_thread::sleep_for(2ms);
+            std::this_thread::sleep_for(std::chrono::microseconds(2));
 
         while(true){
 
             try{
-                char* start = nullptr; std::size_t end, pos;
+                std::uint8_t* start = nullptr; std::size_t end, pos;
                 if (mAsyncBuffer->ReadData(&start, end, pos)){
-
-                    if (mWritterUtility.WriteToFile(start, std::min(MAX_SLOT_LEN, end)))
+                    if (mWritterUtility.WriteToFile(start, std::min(MAX_SLOT_LEN, end))){
                         mAsyncBuffer->UnlockReadPos(pos);
+                    }
                 }else{
 
-                    std::this_thread::sleep_for(10ms);
+                    std::this_thread::sleep_for(std::chrono::microseconds(5));
                 }
 
                 if (mConsExit.load(std::memory_order_relaxed)){
 
-                    char* start = nullptr; std::size_t end;
+                    std::uint8_t* start = nullptr; std::size_t end;
                     while (!mAsyncBuffer->FlushBuffer(&start, end)){
 
                         if (end != 0){
@@ -264,7 +267,7 @@ public:
 private:
     std::unique_ptr<FLogConfig> mConfig;
 
-    std::unique_ptr<FLogCircularBuffer<FLogLine::type>> mAsyncBuffer;
+    std::unique_ptr<FLogCircularBuffer<FLogLine>> mAsyncBuffer;
 
     std::thread mProducerThread;
     std::deque<ProducerMsg> mProdMessageBox;
@@ -289,7 +292,7 @@ private:
 
 void AddProdMsgExternal(ProducerMsg&& p_Msg){
 
-    FLogManager::globalInstance().AddProdMsg(std::move(p_Msg));
+    FLogManager::globalInstance().AddProdMsg(std::forward<ProducerMsg>(p_Msg));
 }
 
 #endif /* FLOG_MANAGER_HPP */
