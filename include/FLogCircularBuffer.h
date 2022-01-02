@@ -114,7 +114,7 @@ public:
 
             // Reset all helpers
             auto len = std::distance(mCurrentWriteBuffer, mCurrentWriteBuffer + mBytesWrittenInCurrentWriteBuffer);
-#if 1
+#if TEST_WRITE
             std::string test;
             test.resize(sizeof(T));
             memcpy(test.data(), &mBuffer[pos], len);

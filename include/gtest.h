@@ -29,11 +29,11 @@ TEST(FlashLoggerTest, LOG_INFO) {
 
     FLogManager::globalInstance().SetLogLevel("INFO");
 
-    for(unsigned int i = 0; i < 10; i++){
+    for(unsigned int i = 0; i < 1000; i++){
 
         FLOG_INFO << "char* : " << "Hello World!!!"
                   << "unsigned int : " << i
-                  << "signed int : " << static_cast<int>(i - 10)
+                  << "signed int : " << static_cast<int>(i - 1000)
                   << "double : " << static_cast<double>(i);
     }
 }

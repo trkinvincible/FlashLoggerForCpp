@@ -22,8 +22,7 @@
 
 // Author: Radhakrishnan Thangavel (https://github.com/trkinvincible)
 
-#ifndef FLOG_MANAGER_HPP
-#define FLOG_MANAGER_HPP
+#pragma once
 
 #include <iostream>
 #include <thread>
@@ -61,7 +60,6 @@ public:
     ~FLogManager() noexcept{
 
         try{
-
             mHostAppExited.store(true, std::memory_order_relaxed);
             AddProdMsg(ProducerMsg(true, {"\n\n******FLog completed*******"}));
             std::cout << "Producer Exit: " << std::boolalpha << mTasksFutures[0].get() << std::endl;
@@ -69,12 +67,12 @@ public:
             std::cout << "Consumer Exit: " << std::boolalpha << mTasksFutures[1].get() << std::endl;
 
 #if(!USE_MICROSERVICE)
-                const std::string tmp = std::string("subl ") + std::string(mConfig->data().log_file_path +
-                                                                           "/"+ mConfig->data().log_file_name);
-                system(tmp.data());
+            std::string tmp;
+            std::stringstream ss(tmp);
+            ss << "subl " << /*mConfig->data().log_file_path*/"." << "/" << /*mConfig->data().log_file_name*/"flashlog.txt";
+            system(tmp.data());
 #endif
         }catch(std::exception& exp){
-
             std::cout << __FUNCTION__ << " FLOG service failed to exit: "
                       << exp.what() << std::endl;
         }
@@ -114,7 +112,6 @@ public:
         CPU_ZERO(&cpuset);
         // run producer and consumer in same processor(s) so the data cache is intact
         for(int cpu_index = 0; cpu_index < noOfLogicalCores; cpu_index += 2){
-
             CPU_SET(cpu_index, &cpuset);
         }
         int rc = pthread_setaffinity_np(t1.native_handle(),sizeof(cpu_set_t), &cpuset);
@@ -128,17 +125,17 @@ public:
     }
 
     const FLogLine& getFlogLine(const LEVEL p_Level, const char* f, std::uint32_t l){
-            return [p_Level, f, l]()->const FLogLine&{
-              static FLogLine flog;
-              static FLogLineDummy flogDummy;
-              if (FLogManager::toLog(p_Level)){
+        return [p_Level, f, l]()->const FLogLine&{
+            static FLogLine flog;
+            static FLogLineDummy flogDummy;
+            if (FLogManager::toLog(p_Level)){
                 if (FLogManager::IsFull()){
-                  flog.InitData(FLogNow(), f,l);
+                    flog.InitData(FLogNow(), f,l);
                 }
                 return flog;
-              }
-              return flogDummy;
-            }();
+            }
+            return flogDummy;
+        }();
     }
 
     static void SetLogLevel(std::string p_level)noexcept{
@@ -154,50 +151,53 @@ public:
         mCurrentGranularity = (p_granularity == "BASIC" ? GRANULARITY::BASIC : GRANULARITY::FULL);
     }
 
-    static bool toLog(LEVEL p_level)noexcept{
+    static inline bool toLog(LEVEL p_level)noexcept{
 
         return (mCurrentLevel >= p_level);
     }
 
-    static bool IsFull()noexcept{
+    static inline bool IsFull()noexcept{
 
         return (mCurrentGranularity == GRANULARITY::FULL);
     }
 
+    // Multiple Threads can add message to message Box so must be syncronized per log line.
     friend void AddProdMsgExternal(ProducerMsg&& p_Msg);
-    void AddProdMsg(ProducerMsg&& p_Msg){
+    void AddProdMsg(ProducerMsg&& p_Msg) noexcept{
 
-        static volatile uint s_count = 0;
-        {
-            std::unique_lock<std::recursive_mutex> lk(mProdMutex);
-            if (!lk.owns_lock())
-                mProdCondVariable.wait(lk);
-        }
+        try{
+            while(true){
+                static std::size_t s_count = 0;
+                if (!mProdMutex.try_lock()){
+                    std::this_thread::sleep_for(std::chrono::microseconds(5));
+                    continue;
+                }
+                ++s_count;
+                mProdMessageBox.push_back(std::move(p_Msg));
+                if (p_Msg.isEnd){
 
-        mProdMutex.lock();
-        ++s_count;
-        mProdMessageBox.push_back(std::move(p_Msg));
-        if (p_Msg.isEnd){
-
-            static int l;
-            ++s_count;
-            while(--s_count) {
-                mProdMutex.unlock();
+                    ++s_count;
+                    while(--s_count) {
+                        mProdMutex.unlock();
+                    }
+                }
+                break;
             }
-            mProdCondVariable.notify_one();
+        }catch(const std::exception& exp){
+            std::cout << "Main App exception: " << exp.what();
         }
     }
 
+    // Single Producer Single Consumer. SPSC.
     bool ProducerThreadRun(){
 
         std::once_flag startConsumer;
-        while (true){
-
-            try{
-                std::unique_lock<std::recursive_mutex> lk(mProdMutex);
-                mProdCondVariable.wait(lk, [this](){
-                    return !mProdMessageBox.empty();
-                });
+        try{
+            while (true){
+                if (!mProdMutex.try_lock()){
+                    std::this_thread::sleep_for(std::chrono::microseconds(5));
+                    continue;
+                }
                 while (!mProdMessageBox.empty()){
                     const auto& data = mProdMessageBox.front();
                     while(true){
@@ -210,17 +210,15 @@ public:
                     }
                     std::call_once(startConsumer, [this](){ mStartReader.store(true, std::memory_order_relaxed); });
                 }
-                lk.unlock();
+                mProdMutex.unlock();
                 if (mHostAppExited.load(std::memory_order_relaxed)){
 
                     return true;
                 }
-                mProdCondVariable.notify_one();
-            }catch(std::exception& exp){
-
-                std::cout << "producer exception: " << exp.what();
-                return false;
             }
+        }catch(const std::exception& exp){
+            std::cout << "producer exception: " << exp.what();
+            return false;
         }
     }
 
@@ -231,7 +229,6 @@ public:
             std::this_thread::sleep_for(std::chrono::microseconds(2));
 
         while(true){
-
             try{
                 std::uint8_t* start = nullptr; std::size_t end, pos;
                 if (mAsyncBuffer->ReadData(&start, end, pos)){
@@ -239,17 +236,13 @@ public:
                         mAsyncBuffer->UnlockReadPos(pos);
                     }
                 }else{
-
                     std::this_thread::sleep_for(std::chrono::microseconds(5));
                 }
 
                 if (mConsExit.load(std::memory_order_relaxed)){
-
                     std::uint8_t* start = nullptr; std::size_t end;
                     while (!mAsyncBuffer->FlushBuffer(&start, end)){
-
                         if (end != 0){
-
                             mWritterUtility.WriteToFile(start, std::min(MAX_SLOT_LEN, end));
                         }
                     }
@@ -257,7 +250,6 @@ public:
                 }
 
             }catch(std::exception& exp){
-
                 std::cout << "consumer exception: " << exp.what();
                 return false;
             }
@@ -272,7 +264,9 @@ private:
     std::thread mProducerThread;
     std::deque<ProducerMsg> mProdMessageBox;
     std::recursive_mutex mProdMutex;
-    std::condition_variable_any mProdCondVariable;
+
+    // using spinlock instead.
+    /*std::condition_variable_any mProdCondVariable;*/
 
     std::thread mConsumerThread;
 
@@ -294,6 +288,3 @@ void AddProdMsgExternal(ProducerMsg&& p_Msg){
 
     FLogManager::globalInstance().AddProdMsg(std::forward<ProducerMsg>(p_Msg));
 }
-
-#endif /* FLOG_MANAGER_HPP */
-

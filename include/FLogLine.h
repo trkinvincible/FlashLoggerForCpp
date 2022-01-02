@@ -86,12 +86,16 @@ private:
     char* Gettime(uint64_t p_Now){
 
         // Need a fix here for corrupted date time. need a dynamic buffer.
-        static char mbstr[100];
+        static char mbstr_CB[5][100];
+        static std::int8_t index = -1;
+        index = (++index % 5);
+        char* mbstr = *(mbstr_CB + index);
         std::fill_n(mbstr, 100, 0);
+
         auto duration = std::chrono::microseconds(p_Now);
         std::chrono::system_clock::time_point time_point(duration);
         std::time_t time_t = std::chrono::system_clock::to_time_t(time_point);
-        if (int len; len = std::strftime(mbstr, sizeof(mbstr), "%c", std::localtime(&time_t))){
+        if (int len; len = std::strftime(mbstr, 100, "%c", std::localtime(&time_t))){
 
             static char microseconds[20];
             sprintf(microseconds, " micro-seconds: %03lu", duration.count());
