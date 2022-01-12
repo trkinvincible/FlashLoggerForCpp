@@ -69,7 +69,7 @@ public:
 #if(!USE_MICROSERVICE)
             std::string tmp;
             std::stringstream ss(tmp);
-            ss << "subl " << /*mConfig->data().log_file_path*/"." << "/" << /*mConfig->data().log_file_name*/"flashlog.txt";
+            ss << "subl -n " << /*mConfig->data().log_file_path*/"." << "/" << /*mConfig->data().log_file_name*/"flashlog.txt";
             system(tmp.data());
 #endif
         }catch(std::exception& exp){

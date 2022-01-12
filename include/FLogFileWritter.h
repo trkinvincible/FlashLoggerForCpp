@@ -25,6 +25,7 @@
 #pragma once
 
 #include <fcntl.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -37,14 +38,13 @@ using namespace google::protobuf::io;
 class FLogFileWritter
 {
 public:
-    FLogFileWritter(const std::string& p_FileName){
+    FLogFileWritter(const std::string& p_FileName)
+        : mFile(open(p_FileName.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0777)),
+          mLogFile(new FileOutputStream(mFile)){
 
 #if 0   // Release
         mFile = open(p_FileName.c_str(), S_IRUSR|S_IWUSR, O_WRONLY | O_CREAT | O_TRUNC);
-#else
-        mFile = open(p_FileName.c_str(), O_WRONLY | O_CREAT | O_TRUNC);
 #endif
-        mLogFile.reset(new FileOutputStream(mFile));
         mLogFile->SetCloseOnDelete(true);
     }
 
